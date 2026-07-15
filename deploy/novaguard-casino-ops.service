@@ -1,5 +1,5 @@
 [Unit]
-Description=NovaGuard Casino Ops Dashboard
+Description=NovaGuard Casino Operations Dashboard
 After=network.target
 
 [Service]
