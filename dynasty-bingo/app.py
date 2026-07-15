@@ -6,11 +6,12 @@ Fark: Her endpoint'te '/tenant/{tenant_id}/...' yerine artık sadece
 hiç gerek yok — hep aynı casino.
 """
 
+import csv
 import hmac
-import os
 import io
+import os
 import secrets
-from fastapi import FastAPI, Depends, Header, HTTPException, Request
+from fastapi import FastAPI, Depends, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -18,7 +19,7 @@ from datetime import datetime, date, timedelta
 from typing import List, Dict, Any, Optional
 
 import royal_math  # Kara Kutu Motoru
-from database import SessionLocal, init_db, Card, GameState, Winners, GameConfig, get_or_create_config, get_or_create_state
+from database import SessionLocal, init_db, Card, GameState, Winners, GameConfig, LoyaltyPoints, get_or_create_config, get_or_create_state
 from integrations import CasinoSystem
 from card_generator import generate_cards
 from sms_service import send_sms
@@ -162,7 +163,34 @@ class PublicPrizesOutput(BaseModel):
     prize_amorti_usd: int
 
 
+class LoyaltyPushItem(BaseModel):
+    owner_id: str
+    points: int = Field(..., ge=0)
+
+
+class LoyaltyPushInput(BaseModel):
+    """
+    Casino'nun CMS/CRM'i, oyuncuların sadakat puanlarını buraya toplu halde
+    gönderir (biz CMS'e bağlanmıyoruz, CMS bize bağlanıyor — bkz. README).
+    """
+    records: List[LoyaltyPushItem]
+
+
 # --- III. ANA ÇEKİLİŞ MANTIĞI ---
+
+def resolve_loyalty_points(db: Session, owner_id: str) -> int:
+    """
+    Önce gerçek casino verisini arar (CMS'ten /integrations/loyalty-points ile
+    PUSH edilmiş ya da /integrations/loyalty-csv ile yüklenmiş). Bulamazsa
+    integrations.py'deki CasinoSystem simülasyon değerine düşer — böylece
+    entegrasyon henüz kurulmamış bir casino'da sistem yine de çalışmaya devam
+    eder, sadece o oyuncu için puan gerçek değil uydurma olur.
+    """
+    real = db.query(LoyaltyPoints).filter(LoyaltyPoints.owner_id == owner_id).first()
+    if real:
+        return real.points
+    return CasinoSystem.get_loyalty_points(owner_id)
+
 
 def automatic_draw_process(db: Session, force: bool = False, is_panic_mode: bool = False):
     """Tek casino için otomatik top çekme işlemi. Worker her tetiklediğinde bunu çağırır."""
@@ -262,7 +290,7 @@ def automatic_draw_process(db: Session, force: bool = False, is_panic_mode: bool
         qualifying_cards = _unique_by_owner(qualifying_cards)
         if len(qualifying_cards) <= max_count:
             return qualifying_cards
-        ranked = sorted(qualifying_cards, key=lambda c: CasinoSystem.get_loyalty_points(c.owner_id), reverse=True)
+        ranked = sorted(qualifying_cards, key=lambda c: resolve_loyalty_points(db, c.owner_id), reverse=True)
         return ranked[:max_count]
 
     # --- 1. ÇİNKO (score >= 1) ---
@@ -317,11 +345,11 @@ def automatic_draw_process(db: Session, force: bool = False, is_panic_mode: bool
             # sözlüğe yazıldığı için). _unique_by_owner ile bunu önlüyoruz.
             eligible = _unique_by_owner([card for card, score, marked in card_scores if marked == 14])
             if config.prize_amorti_usd > 0 and eligible:
-                ranked = sorted(eligible, key=lambda c: CasinoSystem.get_loyalty_points(c.owner_id), reverse=True)
+                ranked = sorted(eligible, key=lambda c: resolve_loyalty_points(db, c.owner_id), reverse=True)
                 top_n = ranked[:config.amorti_top_n]
-                total_points = sum(CasinoSystem.get_loyalty_points(c.owner_id) for c in top_n)
+                total_points = sum(resolve_loyalty_points(db, c.owner_id) for c in top_n)
                 if total_points > 0:
-                    payouts = {c.owner_id: round((CasinoSystem.get_loyalty_points(c.owner_id) / total_points) * config.prize_amorti_usd, 2) for c in top_n}
+                    payouts = {c.owner_id: round((resolve_loyalty_points(db, c.owner_id) / total_points) * config.prize_amorti_usd, 2) for c in top_n}
                     db.add(Winners(type="amorti", users=[c.owner_id for c in top_n], prize_details={"payouts": payouts}, week_start_date=state.start_date))
                     print(f"ÖDÜL: En yüksek puana sahip {len(top_n)} kişiye Amorti dağıtıldı.")
 
@@ -337,14 +365,18 @@ def automatic_draw_process(db: Session, force: bool = False, is_panic_mode: bool
 # =====================================================================
 
 @app.get("/health")
-def health_check():
+def health_check(db: Session = Depends(get_db)):
+    real_count = db.query(LoyaltyPoints).count()
     return {
         "status": "ok",
         "engine_locked": engine_instance.locked if engine_instance else True,
-        # 🧪 Sadakat puanları henüz gerçek casino CMS'ine bağlı değil (bkz. integrations.py).
-        # Bu, ödül paylaşım kararlarını etkiliyor — canlıya (gerçek ödülle) almadan önce
-        # gerçek veri kaynağına bağlanmalı.
-        "loyalty_data_source": "simulation",
+        # 🧪 real_loyalty_records=0 ise HİÇBİR oyuncu için gerçek sadakat verisi
+        # push/upload edilmemiş demektir — tüm ödül paylaşım kararları
+        # integrations.py'deki uydurma veriyle veriliyor. >0 ise o kadar oyuncu
+        # için gerçek veri var, geri kalanlar hâlâ simülasyona düşüyor (karışık
+        # durum normaldir — entegrasyon aşamalı da kurulabilir).
+        "loyalty_data_source": "simulation" if real_count == 0 else "mixed",
+        "real_loyalty_records": real_count,
     }
 
 
@@ -444,10 +476,11 @@ def admin_page():
   .sub { font-size:13px; color:#8593AC; margin-bottom:20px; }
   section { background:#121B2E; border:1px solid #223049; border-radius:12px; padding:20px; margin-bottom:16px; }
   label { display:block; font-size:13px; color:#8593AC; margin-top:14px; margin-bottom:6px; }
-  input[type=text], input[type=password], input[type=number] {
+  input[type=text], input[type=password], input[type=number], input[type=file] {
     width:100%; padding:12px; font-size:16px; border-radius:8px; border:1px solid #223049;
     background:#16213A; color:#E7ECF3; box-sizing:border-box;
   }
+  code { background:#16213A; border:1px solid #223049; border-radius:4px; padding:1px 6px; font-size:12px; }
   .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   .checkline { display:flex; align-items:flex-start; gap:10px; margin-top:14px; }
   .checkline input { margin-top:3px; }
@@ -538,6 +571,20 @@ def admin_page():
     <div id="drawResult"></div>
   </section>
 
+  <section>
+    <h2>Sadakat Verisi</h2>
+    <div class="sub" style="margin-top:-8px;">Kazanan seçimi ve Amorti dağılımı sadakat puanına göre yapılır. Gerçek veri
+    olmayan oyuncular için sistem otomatik olarak simülasyon değeri kullanır (bkz. <code>/health</code>).
+    Casino'nun CMS'i <code>/integrations/loyalty-points</code>'e API ile puan gönderebilir; API'ye bağlanacak
+    IT kapasitesi yoksa aşağıdan CSV de yüklenebilir (iki sütun: <code>owner_id,points</code>).</div>
+
+    <label>CSV Dosyası</label>
+    <input id="csvFile" type="file" accept=".csv,text/csv">
+
+    <button id="csvBtn" onclick="uploadCsv()">CSV Yükle</button>
+    <div id="csvResult"></div>
+  </section>
+
 <script>
 const staffKeyInput = document.getElementById('staffKey');
 staffKeyInput.value = sessionStorage.getItem('dynastyStaffKey') || '';
@@ -547,16 +594,20 @@ function fmt(n) { return "$" + Number(n).toLocaleString("en-US"); }
 
 async function refreshStatus() {
   try {
-    const [stateRes, prizesRes, winnersRes] = await Promise.all([
-      fetch('/state'), fetch('/prizes'), fetch('/winners')
+    const [stateRes, prizesRes, winnersRes, healthRes] = await Promise.all([
+      fetch('/state'), fetch('/prizes'), fetch('/winners'), fetch('/health')
     ]);
     const state = await stateRes.json();
     const prizes = await prizesRes.json();
     const winners = await winnersRes.json();
+    const health = await healthRes.json();
 
     const paidPill = state.is_paid_for_current_week
       ? '<span class="pill paid">Ödendi</span>' : '<span class="pill unpaid">Ödenmedi</span>';
     const lockPill = (open) => open ? '<span class="pill open">Açık</span>' : '<span class="pill locked">Kilitli</span>';
+    const loyaltyPill = health.real_loyalty_records > 0
+      ? `<span class="pill paid">${health.real_loyalty_records} gerçek</span>`
+      : '<span class="pill unpaid">Simülasyon</span>';
 
     document.getElementById('statgrid').innerHTML = `
       <div class="stat"><div class="label">Hafta</div><div class="value">${paidPill}</div></div>
@@ -569,6 +620,7 @@ async function refreshStatus() {
       <div class="stat"><div class="label">2.Çinko Ödülü</div><div class="value">${fmt(prizes.prize_c2_usd)}</div></div>
       <div class="stat"><div class="label">Tombala Ödülü</div><div class="value">${fmt(prizes.prize_t_usd)}</div></div>
       <div class="stat"><div class="label">Amorti Ödülü</div><div class="value">${fmt(prizes.prize_amorti_usd)}</div></div>
+      <div class="stat"><div class="label">Sadakat Verisi</div><div class="value">${loyaltyPill}</div></div>
     `;
 
     const winnersBox = document.getElementById('winnersBox');
@@ -665,6 +717,40 @@ async function manualDraw() {
   btn.disabled = false; btn.textContent = 'Top Çek';
 }
 
+async function uploadCsv() {
+  const staffKey = staffKeyInput.value.trim();
+  const resultBox = document.getElementById('csvResult');
+  const btn = document.getElementById('csvBtn');
+  const fileInput = document.getElementById('csvFile');
+
+  if (!staffKey) { resultBox.className = 'result err'; resultBox.textContent = 'Yönetici anahtarını girin.'; return; }
+  if (!fileInput.files.length) { resultBox.className = 'result err'; resultBox.textContent = 'Bir CSV dosyası seçin.'; return; }
+
+  btn.disabled = true; btn.textContent = 'Yükleniyor...';
+  try {
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    const res = await fetch('/integrations/loyalty-csv', {
+      method: 'POST',
+      headers: { 'x-internal-key': staffKey },
+      body: formData,
+    });
+    const data = await res.json();
+    if (res.ok) {
+      resultBox.className = 'result ok';
+      resultBox.textContent = `✅ ${data.message}`;
+      fileInput.value = '';
+      refreshStatus();
+    } else {
+      resultBox.className = 'result err';
+      resultBox.textContent = `Hata: ${data.detail || 'Bilinmeyen hata'}`;
+    }
+  } catch (e) {
+    resultBox.className = 'result err'; resultBox.textContent = 'Bağlantı hatası, tekrar deneyin.';
+  }
+  btn.disabled = false; btn.textContent = 'CSV Yükle';
+}
+
 refreshStatus();
 setInterval(refreshStatus, 4000);
 </script>
@@ -672,6 +758,69 @@ setInterval(refreshStatus, 4000);
 </html>
 """
     return HTMLResponse(html)
+
+
+# =====================================================================
+# VIII. ENTEGRASYON UÇLARI — Gerçek sadakat verisi
+# 🔌 Casino'nun CMS/CRM'i BİZE bağlanır (biz CMS'e bağlanmıyoruz). Sebep: çoğu
+# casino ağında dışarıdan içeri bağlantıya (bize erişim) izin vermek IT için
+# zor onaylanır; dışarıya bağlantı açmaya (CMS'ten bize) izin vermek çok daha
+# kolaydır. CMS'in API çağırma kapasitesi yoksa /integrations/loyalty-csv
+# yedek yolu var — iki sütunlu bir CSV (owner_id,points) yeterli.
+# =====================================================================
+
+@app.post("/integrations/loyalty-points", dependencies=[Depends(verify_internal_key)])
+def push_loyalty_points(payload: LoyaltyPushInput, db: Session = Depends(get_db)):
+    """
+    Casino'nun CMS'i, güncel sadakat puanlarını burada toplu olarak gönderir
+    (örn. her gece bir zamanlanmış görevle). Aynı owner_id tekrar gönderilirse
+    üzerine yazılır (upsert) — CMS her seferinde TÜM güncel listeyi
+    gönderebilir, eski/silinen oyuncuları burada ayrıca silmemize gerek yok.
+    """
+    updated = 0
+    for item in payload.records:
+        existing = db.query(LoyaltyPoints).filter(LoyaltyPoints.owner_id == item.owner_id).first()
+        if existing:
+            existing.points = item.points
+        else:
+            db.add(LoyaltyPoints(owner_id=item.owner_id, points=item.points))
+        updated += 1
+    db.commit()
+    return {"message": f"{updated} oyuncunun sadakat puanı güncellendi.", "updated": updated}
+
+
+@app.post("/integrations/loyalty-csv", dependencies=[Depends(verify_internal_key)])
+async def upload_loyalty_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """
+    📄 YEDEK YOL — CMS'in API çağırma kapasitesi yoksa (küçük casino'larda IT
+    ekibi olmayabilir), puanlar basit bir CSV dosyası olarak buraya
+    yüklenebilir. Beklenen format, başlık satırı dahil ya da hariç iki sütun:
+        owner_id,points
+        Ahmet Kaya,4200
+        Tamar Gelashvili,7800
+    Aynı owner_id birden fazla satırda geçerse son satır geçerli olur.
+    """
+    content = (await file.read()).decode("utf-8-sig")
+    reader = csv.reader(content.splitlines())
+    updated = 0
+    for row in reader:
+        if len(row) < 2:
+            continue
+        owner_id, points_str = row[0].strip(), row[1].strip()
+        if not owner_id or owner_id.lower() == "owner_id":  # başlık satırını atla
+            continue
+        try:
+            points = int(points_str)
+        except ValueError:
+            continue
+        existing = db.query(LoyaltyPoints).filter(LoyaltyPoints.owner_id == owner_id).first()
+        if existing:
+            existing.points = points
+        else:
+            db.add(LoyaltyPoints(owner_id=owner_id, points=points))
+        updated += 1
+    db.commit()
+    return {"message": f"{updated} satır işlendi.", "updated": updated}
 
 
 # --- OYUNCU / GENEL UÇLAR ---
