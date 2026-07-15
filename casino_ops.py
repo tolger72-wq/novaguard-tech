@@ -40,6 +40,15 @@
 #     ÖNERİLİR — özellikle localhost dışında erişilebiliyorsa.
 #   - NOVAGUARD_HOST (varsayılan 0.0.0.0) ve PORT (varsayılan 8000) ile
 #     bind adresini/portunu değiştirebilirsiniz.
+#   - Veri kaynağı NOVAGUARD_CACHE_SECONDS (varsayılan 20sn) kadar
+#     önbelleklenir — özellikle "api" modunda her sayfa yüklemesinde
+#     müşterinin canlı API'sine gitmemek için. POST ile yeni veri
+#     gelince önbellek anında geçersiz kılınır.
+#   - Tablolar NOVAGUARD_PAGE_SIZE (varsayılan 50) satırlık sayfalara
+#     bölünür; büyük oyuncu listelerinde tek sayfanın şişmesini önler.
+#   - Docker ile çalıştırmak için Dockerfile / docker-compose.yml,
+#     systemd ile çalıştırmak için deploy/novaguard-casino-ops.service
+#     dosyaları depoda hazır bulunur.
 # =============================================================================
 
 import base64
@@ -76,6 +85,16 @@ AYAR = {
 
     "host": os.environ.get("NOVAGUARD_HOST", "0.0.0.0"),
     "port": int(os.environ.get("PORT", "8000")),
+
+    # "api" modunda her sayfa yüklemesinde müşterinin canlı API'sine
+    # gitmemek için veri kaynağı bu kadar saniye önbelleklenir. POST ile
+    # yeni veri geldiğinde önbellek anında geçersiz kılınır (bkz. kaynak_al).
+    "onbellek_saniye": int(os.environ.get("NOVAGUARD_CACHE_SECONDS", "20")),
+
+    # Tek sayfada gösterilecek maksimum satır sayısı (oyuncu/sadakat/F&B/anomali
+    # tabloları için ayrı ayrı sayfalanır). Büyük müşteri listelerinde tek
+    # HTML sayfasının şişmesini önler.
+    "sayfa_boyutu": int(os.environ.get("NOVAGUARD_PAGE_SIZE", "50")),
 
     # Casino'nun köprü scripti bize veri gönderirken bu anahtarı
     # X-NovaGuard-Key başlığında göndermeli. PRODÜKSİYONDA NOVAGUARD_API_KEY
@@ -188,6 +207,7 @@ METIN = {
     "note4": "%50+ sapma = İNCELE, %25+ = İzle. Misafir konusundan bağımsız, ek modül.",
 
     "veri_gelmedi": "Veri gelmedi (uyarıları kontrol et)",
+    "sayfa_onceki": "‹ Önceki", "sayfa_sonraki": "Sonraki ›", "sayfa_bilgi": "Sayfa {} / {}",
     "seg_vip": "VIP", "seg_yuksek": "Yüksek", "seg_orta": "Orta", "seg_dusuk": "Düşük",
     "onc_yuksek": "YÜKSEK", "onc_orta": "Orta", "onc_dusuk": "Düşük",
 
@@ -241,6 +261,7 @@ METIN = {
     "note4": "50%+ deviation = REVIEW, 25%+ = Watch. A separate module, unrelated to guest data.",
 
     "veri_gelmedi": "No data (check warnings)",
+    "sayfa_onceki": "‹ Prev", "sayfa_sonraki": "Next ›", "sayfa_bilgi": "Page {} / {}",
     "seg_vip": "VIP", "seg_yuksek": "High", "seg_orta": "Medium", "seg_dusuk": "Low",
     "onc_yuksek": "HIGH", "onc_orta": "Medium", "onc_dusuk": "Low",
 
@@ -294,6 +315,7 @@ METIN = {
     "note4": "Отклонение 50%+ = ПРОВЕРИТЬ, 25%+ = Наблюдать. Отдельный модуль, не связан с данными гостей.",
 
     "veri_gelmedi": "Нет данных (проверьте предупреждения)",
+    "sayfa_onceki": "‹ Пред.", "sayfa_sonraki": "След. ›", "sayfa_bilgi": "Страница {} / {}",
     "seg_vip": "VIP", "seg_yuksek": "Высокий", "seg_orta": "Средний", "seg_dusuk": "Низкий",
     "onc_yuksek": "ВЫСОКИЙ", "onc_orta": "Средний", "onc_dusuk": "Низкий",
 
@@ -347,6 +369,7 @@ METIN = {
     "note4": "50%+ გადახრა = შემოწმება, 25%+ = დაკვირვება. ცალკე მოდული, სტუმრის მონაცემებთან კავშირი არ აქვს.",
 
     "veri_gelmedi": "მონაცემები არ მოვიდა (შეამოწმეთ გაფრთხილებები)",
+    "sayfa_onceki": "‹ წინა", "sayfa_sonraki": "შემდეგი ›", "sayfa_bilgi": "გვერდი {} / {}",
     "seg_vip": "VIP", "seg_yuksek": "მაღალი", "seg_orta": "საშუალო", "seg_dusuk": "დაბალი",
     "onc_yuksek": "მაღალი", "onc_orta": "საშუალო", "onc_dusuk": "დაბალი",
 
@@ -579,6 +602,45 @@ def kaynak_olustur():
     return OrnekKaynak()
 
 
+_kaynak_kilit = threading.Lock()
+_kaynak_onbellek = {"nesne": None, "zaman": 0.0}
+
+
+def kaynak_al():
+    """kaynak_olustur()'u AYAR['onbellek_saniye'] kadar önbellekler.
+    Özellikle 'api' modunda her sayfa yüklemesinde müşterinin canlı
+    API'sine gereksiz istek atmamak, gecikmeyi ve rate-limit riskini
+    önlemek için. 'csv' modunda da gereksiz disk okumasını azaltır.
+    POST ile yeni veri geldiğinde onbellek_temizle() çağrılır, yani
+    veri hiçbir zaman önbellek süresinden daha eski kalmaz."""
+    simdi = time.time()
+    with _kaynak_kilit:
+        nesne = _kaynak_onbellek["nesne"]
+        if nesne is not None and (simdi - _kaynak_onbellek["zaman"]) < AYAR["onbellek_saniye"]:
+            return nesne
+        nesne = kaynak_olustur()
+        _kaynak_onbellek["nesne"] = nesne
+        _kaynak_onbellek["zaman"] = simdi
+        return nesne
+
+
+def onbellek_temizle():
+    with _kaynak_kilit:
+        _kaynak_onbellek["nesne"] = None
+        _kaynak_onbellek["zaman"] = 0.0
+
+
+def sayfala(liste, sayfa_no, sayfa_boyutu):
+    """Bir listeyi sayfa_boyutu'na göre böler. Geçersiz sayfa numaraları
+    (0, negatif, aralık dışı) sınırlara clamp edilir."""
+    if sayfa_boyutu <= 0:
+        return liste, 1, 1
+    toplam_sayfa = max(1, -(-len(liste) // sayfa_boyutu))
+    sayfa_no = max(1, min(sayfa_no, toplam_sayfa))
+    basla = (sayfa_no - 1) * sayfa_boyutu
+    return liste[basla:basla + sayfa_boyutu], sayfa_no, toplam_sayfa
+
+
 # =============================================================================
 # MODÜL 1 — OYUNCU DEĞERİ & PROMOSYON
 # =============================================================================
@@ -729,15 +791,53 @@ def esc(deger):
     return html.escape(str(deger), quote=True)
 
 
-def html_olustur(kaynak, dil):
+def _durum_qs(sekme, sayfalar):
+    """Sekme + sayfalama durumunu URL query string'e çevirir; dil
+    değiştirme ve sayfalama linklerinde durumu korumak için kullanılır."""
+    parcalar = [f"sekme={sekme}"] + [f"p_{k}={v}" for k, v in sayfalar.items()]
+    return "&".join(parcalar)
+
+
+def _sayfa_nav(m, dil, sekme, sayfalar, anahtar, gecerli, toplam):
+    if toplam <= 1:
+        return ""
+
+    def link(hedef_sayfa):
+        yeni = dict(sayfalar)
+        yeni[anahtar] = hedef_sayfa
+        return f"/?dil={dil}&{_durum_qs(sekme, yeni)}"
+
+    if gecerli > 1:
+        onceki = f'<a href="{link(gecerli - 1)}">{m["sayfa_onceki"]}</a>'
+    else:
+        onceki = f'<span class="sayfa-pasif">{m["sayfa_onceki"]}</span>'
+    if gecerli < toplam:
+        sonraki = f'<a href="{link(gecerli + 1)}">{m["sayfa_sonraki"]}</a>'
+    else:
+        sonraki = f'<span class="sayfa-pasif">{m["sayfa_sonraki"]}</span>'
+    bilgi = m["sayfa_bilgi"].format(gecerli, toplam)
+    return f'<div class="sayfa-nav">{onceki}<span>{bilgi}</span>{sonraki}</div>'
+
+
+def html_olustur(kaynak, dil, sekme=0, sayfalar=None):
     if dil not in METIN:
         dil = AYAR["dil"]
     m = METIN[dil]
+    sekme = max(0, min(3, sekme))
+    sayfalar = dict(sayfalar or {})
+    for anahtar in ("oyuncu", "sadakat", "fb", "anomali"):
+        sayfalar.setdefault(anahtar, 1)
+    sb = AYAR["sayfa_boyutu"]
 
-    oyuncular = oyuncu_analizi(kaynak)
-    sadakat = sadakat_hesapla(kaynak)
-    fb_liste = fb_servis_listesi(kaynak)
-    anomali = anomali_tespiti(kaynak)
+    oyuncular_tum = oyuncu_analizi(kaynak)
+    sadakat_tum = sadakat_hesapla(kaynak)
+    fb_liste_tum = fb_servis_listesi(kaynak)
+    anomali_tum = anomali_tespiti(kaynak)
+
+    oyuncular, sayfalar["oyuncu"], oyuncu_toplam_sayfa = sayfala(oyuncular_tum, sayfalar["oyuncu"], sb)
+    sadakat, sayfalar["sadakat"], sadakat_toplam_sayfa = sayfala(sadakat_tum, sayfalar["sadakat"], sb)
+    fb_liste, sayfalar["fb"], fb_toplam_sayfa = sayfala(fb_liste_tum, sayfalar["fb"], sb)
+    anomali, sayfalar["anomali"], anomali_toplam_sayfa = sayfala(anomali_tum, sayfalar["anomali"], sb)
 
     uyari_html = ""
     if kaynak.uyarilar:
@@ -802,7 +902,18 @@ def html_olustur(kaynak, dil):
     dil_butonlari = ""
     for kod, etiket in [("tr", "TR"), ("en", "EN"), ("ru", "RU"), ("ka", "KA")]:
         aktif = "background:#2563eb;color:#fff" if kod == dil else "background:#1e293b;color:#94a3b8"
-        dil_butonlari += f'<a href="/?dil={kod}" style="padding:6px 12px;border-radius:6px;text-decoration:none;font-size:12px;font-weight:600;{aktif}">{etiket}</a>'
+        dil_butonlari += (
+            f'<a href="/?dil={kod}&{_durum_qs(sekme, sayfalar)}" '
+            f'style="padding:6px 12px;border-radius:6px;text-decoration:none;font-size:12px;font-weight:600;{aktif}">{etiket}</a>'
+        )
+
+    def tab_aktif(i):
+        return "active" if i == sekme else ""
+
+    nav1 = _sayfa_nav(m, dil, sekme, sayfalar, "oyuncu", sayfalar["oyuncu"], oyuncu_toplam_sayfa)
+    nav2 = _sayfa_nav(m, dil, sekme, sayfalar, "sadakat", sayfalar["sadakat"], sadakat_toplam_sayfa)
+    nav3 = _sayfa_nav(m, dil, sekme, sayfalar, "fb", sayfalar["fb"], fb_toplam_sayfa)
+    nav4 = _sayfa_nav(m, dil, sekme, sayfalar, "anomali", sayfalar["anomali"], anomali_toplam_sayfa)
 
     return f"""<!DOCTYPE html><html lang="{dil}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -829,6 +940,10 @@ td{{padding:8px;border-bottom:1px solid #334155}}
 .seg{{background:#334155;padding:2px 8px;border-radius:6px;font-size:12px}}
 .note{{color:#94a3b8;font-size:12px;margin-top:12px;line-height:1.5}}
 .dilbar{{display:flex;gap:6px;margin-top:16px;padding-top:12px;border-top:1px solid #334155}}
+.sayfa-nav{{display:flex;gap:14px;align-items:center;margin-top:10px;font-size:12px}}
+.sayfa-nav a{{color:#60a5fa;text-decoration:none}}
+.sayfa-nav a:hover{{text-decoration:underline}}
+.sayfa-pasif{{color:#475569}}
 </style></head><body>
 <h1>{m['baslik']}</h1>
 <div class="alt">{m['alt_baslik']}</div>
@@ -840,32 +955,36 @@ td{{padding:8px;border-bottom:1px solid #334155}}
 {uyari_html}
 
 <div class="tabs">
-  <button class="tab active" onclick="goster(0)">{m['sekme_oyuncu']}</button>
-  <button class="tab" onclick="goster(1)">{m['sekme_sadakat']}</button>
-  <button class="tab" onclick="goster(2)">{m['sekme_fb']}</button>
-  <button class="tab" onclick="goster(3)">{m['sekme_anomali']}</button>
+  <button class="tab {tab_aktif(0)}" onclick="goster(0)">{m['sekme_oyuncu']}</button>
+  <button class="tab {tab_aktif(1)}" onclick="goster(1)">{m['sekme_sadakat']}</button>
+  <button class="tab {tab_aktif(2)}" onclick="goster(2)">{m['sekme_fb']}</button>
+  <button class="tab {tab_aktif(3)}" onclick="goster(3)">{m['sekme_anomali']}</button>
 </div>
 
-<div class="panel active" id="p0">
+<div class="panel {tab_aktif(0)}" id="p0">
   <table><tr><th>{m['th1_oyuncu']}</th><th>{m['th1_teorik']}</th><th>{m['th1_adt']}</th>
     <th>{m['th1_ziyaret']}</th><th>{m['th1_son']}</th><th>{m['th1_segment']}</th>
     <th>{m['th1_promosyon']}</th><th>{m['th1_oncelik']}</th></tr>{oyuncu_satir}</table>
+  {nav1}
   <div class="note">{m['note1']}</div>
 </div>
-<div class="panel" id="p1">
+<div class="panel {tab_aktif(1)}" id="p1">
   <table><tr><th>{m['th2_oyuncu']}</th><th>{m['th2_puan']}</th><th>{m['th2_seviye']}</th>
     <th>{m['th2_fb_tercih']}</th><th>{m['th2_oyun_tercihi']}</th><th>{m['th2_hediye']}</th></tr>{sadakat_satir}</table>
+  {nav2}
   <div class="note">{m['note2']}</div>
 </div>
-<div class="panel" id="p2">
+<div class="panel {tab_aktif(2)}" id="p2">
   <table><tr><th>{m['th3_oyuncu']}</th><th>{m['th3_kahve']}</th><th>{m['th3_icecek']}</th>
     <th>{m['th3_cerez']}</th><th>{m['th3_alkol']}</th><th>{m['th3_servis_notu']}</th></tr>{fb_satir}</table>
+  {nav3}
   <div class="note">{m['note3']}</div>
 </div>
-<div class="panel" id="p3">
+<div class="panel {tab_aktif(3)}" id="p3">
   <table><tr><th>{m['th4_masa']}</th><th>{m['th4_oyun']}</th><th>{m['th4_drop']}</th>
     <th>{m['th4_beklenen']}</th><th>{m['th4_gercek']}</th><th>{m['th4_sapma']}</th>
     <th>{m['th4_fark']}</th><th>{m['th4_durum']}</th></tr>{anomali_satir}</table>
+  {nav4}
   <div class="note">{m['note4']}</div>
 </div>
 
@@ -930,11 +1049,23 @@ class Handler(BaseHTTPRequestHandler):
             if dil not in METIN:
                 dil = AYAR["dil"]
 
-            kaynak = kaynak_olustur()
+            try:
+                sekme = int(qs.get("sekme", ["0"])[0])
+            except ValueError:
+                sekme = 0
+
+            sayfalar = {}
+            for anahtar in ("oyuncu", "sadakat", "fb", "anomali"):
+                try:
+                    sayfalar[anahtar] = int(qs.get(f"p_{anahtar}", ["1"])[0])
+                except ValueError:
+                    sayfalar[anahtar] = 1
+
+            kaynak = kaynak_al()
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(html_olustur(kaynak, dil).encode("utf-8"))
+            self.wfile.write(html_olustur(kaynak, dil, sekme=sekme, sayfalar=sayfalar).encode("utf-8"))
         else:
             self.send_response(404); self.end_headers()
 
@@ -993,6 +1124,7 @@ class Handler(BaseHTTPRequestHandler):
             for kayit in kayitlar:
                 yazici.writerow({alan: kayit.get(alan, "") for alan in gerekli})
 
+        onbellek_temizle()
         self._json_yanit(200, {"basarili": True, "kayit_sayisi": len(kayitlar)})
 
     def _json_yanit(self, kod, veri):
