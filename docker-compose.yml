@@ -1,0 +1,20 @@
+# Örnek kurulum. Değerleri her müşteri için değiştirin — özellikle
+# NOVAGUARD_PANEL_PASS ve NOVAGUARD_API_KEY. Gerçek değerleri buraya
+# yazmak yerine bir .env dosyasından okutmak (docker compose --env-file)
+# veya bir secret manager kullanmak önerilir.
+services:
+  casino-ops:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      NOVAGUARD_PANEL_USER: admin
+      NOVAGUARD_PANEL_PASS: CHANGE_ME
+      NOVAGUARD_API_KEY: CHANGE_ME
+      NOVAGUARD_OPEN_BROWSER: "0"
+      # NOVAGUARD_SSL_CERT: /certs/fullchain.pem
+      # NOVAGUARD_SSL_KEY: /certs/privkey.pem
+    volumes:
+      - ./data:/app/data
+      # - ./certs:/certs:ro
+    restart: unless-stopped

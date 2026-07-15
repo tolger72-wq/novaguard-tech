@@ -1,0 +1,23 @@
+[Unit]
+Description=NovaGuard Casino Ops Dashboard
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/novaguard-casino-ops
+ExecStart=/usr/bin/python3 /opt/novaguard-casino-ops/casino_ops.py
+Restart=on-failure
+RestartSec=5
+Environment=NOVAGUARD_OPEN_BROWSER=0
+# Sırları (panel şifresi, API anahtarı, TLS yolları) buradan değil,
+# aşağıdaki EnvironmentFile'dan okutun — bu dosya versiyon kontrolüne
+# girmemeli (chmod 600, root:novaguard).
+EnvironmentFile=-/opt/novaguard-casino-ops/.env
+User=novaguard
+Group=novaguard
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/novaguard-casino-ops/data
+
+[Install]
+WantedBy=multi-user.target
