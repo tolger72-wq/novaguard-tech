@@ -45,6 +45,19 @@ except Exception as e:
     print(f"HATA: Royal Engine başlatılamadı: {e}")
 
 init_db()
+
+# game_config/game_state singleton satırlarını (id=1) sunucu daha hiç istek
+# almadan ÖNCE burada oluşturuyoruz. Sebep: get_or_create_config/state,
+# satır yoksa "SELECT sonra INSERT" yapıyor — iki istek TAM AYNI ANDA gelip
+# ikisi de "satır yok" görürse, ikisi de INSERT etmeye çalışır ve ikincisi
+# "UNIQUE constraint failed" ile 500 döner. Bu durum tam olarak /bigscreen ve
+# /admin sayfalarının kendi Promise.all([...]) ile /state, /prizes, /winners'ı
+# AYNI ANDA çağırdığı ilk sayfa yüklemesinde (henüz hiçbir satır yokken) oluşur.
+# Satırları burada, tek seferde ve daha rekabet yokken yaratmak sorunu kökten çözer.
+with SessionLocal() as _startup_db:
+    get_or_create_config(_startup_db)
+    get_or_create_state(_startup_db)
+
 app = FastAPI(title="Dynasty Bingo — Tek Casino", version="1.0-single")
 
 # 🧪 SİMÜLASYON MODU UYARISI — CasinoSystem (integrations.py) henüz gerçek bir
@@ -404,6 +417,261 @@ def manual_draw(payload: ManualDrawInput, db: Session = Depends(get_db)):
         "drawn_numbers": state.drawn_numbers,
         "flags": state.flags,
     }
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_page():
+    """
+    Yönetici paneli: hafta başlatma ve manuel çekiliş, tarayıcıdan tıklanarak
+    yapılabilsin diye. Bundan önce bu iki işlem SADECE ham HTTP isteğiyle
+    (curl/Postman) yapılabiliyordu — casino personelinin kullanabileceği bir
+    ekran yoktu. /reception ile aynı desende: sayfa herkese açık, ama gerçek
+    işlemler (start-week, draw) sunucu tarafında zaten x-internal-key ile
+    korunuyor; anahtar tarayıcıda sadece bir kez girilip sessionStorage'da
+    tutulur (reception ile aynı anahtarı paylaşır).
+    """
+    html = """
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yönetici Paneli — Dynasty Bingo</title>
+<style>
+  body { margin:0; padding:24px; background:#0A1120; color:#E7ECF3; font-family:-apple-system,sans-serif; max-width:720px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:22px; margin-bottom:4px; }
+  h2 { font-size:15px; color:#8593AC; font-weight:600; margin:0 0 14px; text-transform:uppercase; letter-spacing:.04em; }
+  .sub { font-size:13px; color:#8593AC; margin-bottom:20px; }
+  section { background:#121B2E; border:1px solid #223049; border-radius:12px; padding:20px; margin-bottom:16px; }
+  label { display:block; font-size:13px; color:#8593AC; margin-top:14px; margin-bottom:6px; }
+  input[type=text], input[type=password], input[type=number] {
+    width:100%; padding:12px; font-size:16px; border-radius:8px; border:1px solid #223049;
+    background:#16213A; color:#E7ECF3; box-sizing:border-box;
+  }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .checkline { display:flex; align-items:flex-start; gap:10px; margin-top:14px; }
+  .checkline input { margin-top:3px; }
+  .checkline .txt { font-size:13px; color:#B7C0D6; line-height:1.5; }
+  .checkline.danger .txt { color:#E8B94D; }
+  .checkline.danger .txt b { color:#E85D5D; }
+  button { margin-top:18px; width:100%; padding:14px; font-size:16px; font-weight:700; border-radius:8px; border:none; background:#2DD4E8; color:#06222B; cursor:pointer; }
+  button.warn { background:#E8B94D; }
+  button:disabled { opacity:0.5; }
+  .result { margin-top:14px; padding:14px; border-radius:8px; font-size:13px; line-height:1.5; white-space:pre-wrap; }
+  .result.ok { background:rgba(45,212,232,0.1); border:1px solid rgba(45,212,232,0.3); color:#2DD4E8; }
+  .result.err { background:rgba(232,93,93,0.1); border:1px solid rgba(232,93,93,0.3); color:#E85D5D; }
+
+  .statgrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:14px; }
+  .stat { background:#16213A; border:1px solid #223049; border-radius:8px; padding:12px; }
+  .stat .label { font-size:11px; color:#8593AC; margin-bottom:4px; text-transform:uppercase; letter-spacing:.03em; }
+  .stat .value { font-size:18px; font-weight:700; }
+  .pill { display:inline-block; padding:3px 9px; border-radius:999px; font-size:11px; font-weight:700; }
+  .pill.open { background:rgba(45,212,232,0.15); color:#2DD4E8; }
+  .pill.locked { background:rgba(133,147,172,0.15); color:#8593AC; }
+  .pill.paid { background:rgba(45,212,232,0.15); color:#2DD4E8; }
+  .pill.unpaid { background:rgba(232,93,93,0.15); color:#E85D5D; }
+
+  .winner-row { display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #223049; font-size:13px; }
+  .winner-row:last-child { border-bottom:none; }
+  .winner-type { color:#E8B94D; font-weight:700; }
+  .empty { color:#8593AC; font-size:13px; }
+</style>
+</head>
+<body>
+  <h1>🎛️ Yönetici Paneli</h1>
+  <div class="sub">Hafta başlatma ve manuel çekiliş buradan yapılır. Diğer tüm ekranlar (resepsiyon, büyük ekran, oyuncu kartı) bu panelden bağımsız çalışmaya devam eder.</div>
+
+  <section>
+    <h2>Yönetici Anahtarı</h2>
+    <input id="staffKey" type="password" placeholder="x-internal-key değeri">
+  </section>
+
+  <section>
+    <h2>Canlı Durum</h2>
+    <div class="statgrid" id="statgrid"><div class="empty">Yükleniyor...</div></div>
+    <div id="winnersBox"><div class="empty">Yükleniyor...</div></div>
+  </section>
+
+  <section>
+    <h2>Haftayı Başlat</h2>
+    <div class="sub" style="margin-top:-8px;">⚠️ Bu, bu haftaki TÜM kartları siler ve oyunu sıfırdan başlatır. Sadece yeni bir hafta başlarken kullanın.</div>
+
+    <label>Haftalık İlan Edilen Ödül Havuzu (USD, komisyon öncesi, en az 10.000)</label>
+    <input id="poolInput" type="number" min="10000" step="100" placeholder="örn: 20000">
+
+    <div class="row">
+      <div>
+        <label>1.Çinko en fazla kaç kişi paylaşır</label>
+        <input id="maxC1Input" type="number" min="1" value="4">
+      </div>
+      <div>
+        <label>2.Çinko en fazla kaç kişi paylaşır</label>
+        <input id="maxC2Input" type="number" min="1" value="4">
+      </div>
+      <div>
+        <label>Tombala en fazla kaç kişi paylaşır</label>
+        <input id="maxTInput" type="number" min="1" value="2">
+      </div>
+      <div>
+        <label>Amorti en fazla kaç kişiye dağılır</label>
+        <input id="amortiInput" type="number" min="1" value="5">
+      </div>
+    </div>
+
+    <button id="startWeekBtn" onclick="startWeek()">Haftayı Başlat</button>
+    <div id="startWeekResult"></div>
+  </section>
+
+  <section>
+    <h2>Manuel Çekiliş</h2>
+
+    <div class="checkline">
+      <input id="forceCheck" type="checkbox">
+      <div class="txt">Günlük top limitini (15) ve çekimler arası 15dk bekleme süresini yok say.</div>
+    </div>
+    <div class="checkline danger">
+      <input id="panicCheck" type="checkbox">
+      <div class="txt"><b>PANİK MODU</b> — 1./2./3. gün kimse kazanamasın kuralını (gün kilitlerini) TAMAMEN kapatır. Sadece haftayı acilen bitirmeniz gerektiğinde kullanın; normal oyunda İŞARETLEMEYİN, yoksa ödüller günlere yayılmadan hemen dağılabilir.</div>
+    </div>
+
+    <button class="warn" id="drawBtn" onclick="manualDraw()">Top Çek</button>
+    <div id="drawResult"></div>
+  </section>
+
+<script>
+const staffKeyInput = document.getElementById('staffKey');
+staffKeyInput.value = sessionStorage.getItem('dynastyStaffKey') || '';
+staffKeyInput.addEventListener('input', () => sessionStorage.setItem('dynastyStaffKey', staffKeyInput.value.trim()));
+
+function fmt(n) { return "$" + Number(n).toLocaleString("en-US"); }
+
+async function refreshStatus() {
+  try {
+    const [stateRes, prizesRes, winnersRes] = await Promise.all([
+      fetch('/state'), fetch('/prizes'), fetch('/winners')
+    ]);
+    const state = await stateRes.json();
+    const prizes = await prizesRes.json();
+    const winners = await winnersRes.json();
+
+    const paidPill = state.is_paid_for_current_week
+      ? '<span class="pill paid">Ödendi</span>' : '<span class="pill unpaid">Ödenmedi</span>';
+    const lockPill = (open) => open ? '<span class="pill open">Açık</span>' : '<span class="pill locked">Kilitli</span>';
+
+    document.getElementById('statgrid').innerHTML = `
+      <div class="stat"><div class="label">Hafta</div><div class="value">${paidPill}</div></div>
+      <div class="stat"><div class="label">Çekilen Top</div><div class="value">${state.drawn_numbers.length} / 90</div></div>
+      <div class="stat"><div class="label">Bugünkü Çekim</div><div class="value">${state.daily_draw_count} / 15</div></div>
+      <div class="stat"><div class="label">1.Çinko</div><div class="value">${lockPill(state.flags.c1)}</div></div>
+      <div class="stat"><div class="label">2.Çinko</div><div class="value">${lockPill(state.flags.c2)}</div></div>
+      <div class="stat"><div class="label">Tombala</div><div class="value">${lockPill(state.flags.t)}</div></div>
+      <div class="stat"><div class="label">1.Çinko Ödülü</div><div class="value">${fmt(prizes.prize_c1_usd)}</div></div>
+      <div class="stat"><div class="label">2.Çinko Ödülü</div><div class="value">${fmt(prizes.prize_c2_usd)}</div></div>
+      <div class="stat"><div class="label">Tombala Ödülü</div><div class="value">${fmt(prizes.prize_t_usd)}</div></div>
+      <div class="stat"><div class="label">Amorti Ödülü</div><div class="value">${fmt(prizes.prize_amorti_usd)}</div></div>
+    `;
+
+    const winnersBox = document.getElementById('winnersBox');
+    if (winners.length === 0) {
+      winnersBox.innerHTML = '<div class="empty">Bu hafta henüz kazanan yok.</div>';
+    } else {
+      winnersBox.innerHTML = winners.map(w => {
+        const names = w.users.join(', ');
+        const amount = w.prize_details.per_winner_usd
+          ? `${fmt(w.prize_details.per_winner_usd)} / kişi` : 'Detaylar için /winners bakın';
+        return `<div class="winner-row"><span><span class="winner-type">${w.type.toUpperCase()}</span> — ${names}</span><span>${amount}</span></div>`;
+      }).join('');
+    }
+  } catch (e) {
+    document.getElementById('statgrid').innerHTML = '<div class="empty">Durum alınamadı, tekrar deneniyor...</div>';
+  }
+}
+
+async function startWeek() {
+  const staffKey = staffKeyInput.value.trim();
+  const resultBox = document.getElementById('startWeekResult');
+  const btn = document.getElementById('startWeekBtn');
+
+  if (!staffKey) { resultBox.className = 'result err'; resultBox.textContent = 'Yönetici anahtarını girin.'; return; }
+
+  const pool = parseInt(document.getElementById('poolInput').value, 10);
+  if (!pool || pool < 10000) { resultBox.className = 'result err'; resultBox.textContent = 'Ödül havuzu en az 10.000 USD olmalı.'; return; }
+
+  if (!confirm('Yeni hafta başlatılacak. Bu haftaki TÜM kartlar silinecek. Emin misiniz?')) return;
+
+  btn.disabled = true; btn.textContent = 'Başlatılıyor...';
+  try {
+    const res = await fetch('/admin/start-week', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': staffKey },
+      body: JSON.stringify({
+        declared_weekly_pool_usd: pool,
+        max_winners_c1: parseInt(document.getElementById('maxC1Input').value, 10) || 4,
+        max_winners_c2: parseInt(document.getElementById('maxC2Input').value, 10) || 4,
+        max_winners_t: parseInt(document.getElementById('maxTInput').value, 10) || 2,
+        amorti_top_n: parseInt(document.getElementById('amortiInput').value, 10) || 5,
+      })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      resultBox.className = 'result ok';
+      resultBox.textContent = `✅ ${data.message}\nNet havuz: ${fmt(data.net_pool_usd)} (komisyon: ${fmt(data.commission_usd)})\n1.Çinko: ${fmt(data.prizes.c1)} · 2.Çinko: ${fmt(data.prizes.c2)} · Tombala: ${fmt(data.prizes.t)} · Amorti: ${fmt(data.prizes.amorti)}`;
+      refreshStatus();
+    } else {
+      resultBox.className = 'result err';
+      resultBox.textContent = `Hata: ${data.detail || 'Bilinmeyen hata'}`;
+    }
+  } catch (e) {
+    resultBox.className = 'result err'; resultBox.textContent = 'Bağlantı hatası, tekrar deneyin.';
+  }
+  btn.disabled = false; btn.textContent = 'Haftayı Başlat';
+}
+
+async function manualDraw() {
+  const staffKey = staffKeyInput.value.trim();
+  const resultBox = document.getElementById('drawResult');
+  const btn = document.getElementById('drawBtn');
+
+  if (!staffKey) { resultBox.className = 'result err'; resultBox.textContent = 'Yönetici anahtarını girin.'; return; }
+
+  const panicMode = document.getElementById('panicCheck').checked;
+  if (panicMode && !confirm('PANİK MODU açık: gün kilitleri tamamen kapanacak. Emin misiniz?')) return;
+
+  btn.disabled = true; btn.textContent = 'Çekiliyor...';
+  try {
+    const res = await fetch('/admin/draw', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': staffKey },
+      body: JSON.stringify({
+        force: document.getElementById('forceCheck').checked,
+        is_panic_mode: panicMode,
+      })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      resultBox.className = 'result ok';
+      const lastBall = data.drawn_numbers.length ? data.drawn_numbers[data.drawn_numbers.length - 1] : '—';
+      resultBox.textContent = data.drew_new_ball
+        ? `✅ Top çekildi: ${lastBall} (toplam ${data.drawn_numbers.length})`
+        : 'Top çekilmedi (limit/süre kontrolüne takıldı veya oyun bitti — force işaretleyin ya da bekleyin).';
+      refreshStatus();
+    } else {
+      resultBox.className = 'result err';
+      resultBox.textContent = `Hata: ${data.detail || 'Bilinmeyen hata'}`;
+    }
+  } catch (e) {
+    resultBox.className = 'result err'; resultBox.textContent = 'Bağlantı hatası, tekrar deneyin.';
+  }
+  btn.disabled = false; btn.textContent = 'Top Çek';
+}
+
+refreshStatus();
+setInterval(refreshStatus, 4000);
+</script>
+</body>
+</html>
+"""
+    return HTMLResponse(html)
 
 
 # --- OYUNCU / GENEL UÇLAR ---
