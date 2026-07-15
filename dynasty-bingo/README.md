@@ -6,11 +6,12 @@ Bu, çoklu casino (multi-tenant) sürümünün basitleştirilmiş hali. Tek bir 
 **Kural: Oyuncu başına en fazla 1 kart.** `/cards` ve `/reception/register`, aynı
 `owner_id`/isim için bu hafta zaten bir kart varsa 409 hatası döner.
 
-🧪 **Simülasyon modu:** `integrations.py` içindeki `CasinoSystem` sınıfı henüz gerçek
-bir casino CMS/CRM'sine bağlı değil — sadakat puanları uydurma (hash tabanlı) veridir.
-Bu veri, birden fazla kişi aynı ödülü hak ettiğinde kimin kazanacağını ve Amorti
-dağılımını belirliyor. Gerçek casino verisine bağlanmadan CANLIYA (gerçek ödülle)
-ALINMAMALI. Sunucu başlarken ve `/health` içinde bu açıkça uyarılır.
+🧪 **Simülasyon modu:** Bir oyuncu için gerçek sadakat puanı (bkz. aşağıdaki
+"Gerçek Sadakat Verisi" bölümü) push/upload edilmediyse, `integrations.py` içindeki
+`CasinoSystem` sınıfı o oyuncu için uydurma (hash tabanlı) bir puan üretir. Bu veri,
+birden fazla kişi aynı ödülü hak ettiğinde kimin kazanacağını ve Amorti dağılımını
+belirliyor. Hiç entegrasyon kurulmadan CANLIYA (gerçek ödülle) ALINMAMALI. Sunucu
+başlarken ve `/health` içinde (`real_loyalty_records` alanı) bu açıkça görünür.
 
 ## Kurulum
 
@@ -40,15 +41,50 @@ tarayıcıdan tıklanarak yapılır, ham HTTP isteği (curl/Postman) göndermeye
 Sayfa açılınca yönetici anahtarını (`x-internal-key` değeri) bir kez girin; tarayıcı
 bir sonraki ziyarete kadar hatırlar (resepsiyon sayfasıyla aynı anahtarı paylaşır).
 
-Panelde üç bölüm var: **Canlı Durum** (kaç top çekildi, kilitler açık mı, ödül tutarları,
-kazananlar — 4 saniyede bir otomatik yenilenir), **Haftayı Başlat** (ödül havuzu ve
-paylaşım ayarlarıyla yeni hafta açar — bu haftaki tüm kartları siler, dikkatli kullanın)
-ve **Manuel Çekiliş**.
+Panelde dört bölüm var: **Canlı Durum** (kaç top çekildi, kilitler açık mı, ödül tutarları,
+kazananlar, sadakat verisinin ne kadarı gerçek — 4 saniyede bir otomatik yenilenir),
+**Haftayı Başlat** (ödül havuzu ve paylaşım ayarlarıyla yeni hafta açar — bu haftaki
+tüm kartları siler, dikkatli kullanın), **Manuel Çekiliş** ve **Sadakat Verisi**
+(CSV yükleme — bkz. aşağıdaki "Gerçek Sadakat Verisi" bölümü).
 
 ⚠️ **Panik modu** manuel çekilişte bir seçenek olarak var — ama bunu SADECE haftayı
 acilen bitirmeniz gerektiğinde işaretleyin. Bu, "1./2./3. gün kimse kazanmasın" gün
 kilidini tamamen kapatır; normal oynatışta işaretli bırakırsanız ödüller günlere
 yayılmadan aynı gün içinde dağılabilir.
+
+## 🔌 Gerçek Sadakat Verisi Nasıl Bağlanır?
+
+Kazanan seçimi ve Amorti dağılımı sadakat puanına göre yapılır (bkz. yukarıdaki
+simülasyon modu notu). Gerçek veriyi bağlamanın iki yolu var — **biz casino'nun
+CMS'ine bağlanmıyoruz, CMS bize bağlanır.** Sebep: çoğu casino ağında dışarıdan
+içeri (bize) bağlantıya izin vermek IT için zor onaylanır; dışarıya (CMS'ten bize)
+bağlantı açmaya izin vermek çok daha kolaydır.
+
+**1. API push (önerilen, CMS'in IT kapasitesi varsa):**
+
+```bash
+curl -X POST http://sunucu:8000/integrations/loyalty-points \
+  -H "x-internal-key: ..." \
+  -H "Content-Type: application/json" \
+  -d '{"records": [
+    {"owner_id": "Ahmet Kaya", "points": 4200},
+    {"owner_id": "Tamar Gelashvili", "points": 7800}
+  ]}'
+```
+
+CMS bunu örn. her gece zamanlanmış bir görevle çağırabilir. Aynı `owner_id` tekrar
+gönderilirse üzerine yazılır (upsert) — her seferinde TÜM güncel listeyi göndermek
+güvenlidir, eski oyuncuları ayrıca silmeye gerek yok.
+
+**2. CSV yükleme (yedek yol, IT kapasitesi yoksa):** Yönetici panelindeki
+**Sadakat Verisi** bölümünden, iki sütunlu bir CSV dosyası (`owner_id,points`)
+yüklenebilir. Aynı API'yle aynı sonucu üretir.
+
+**Nasıl çalışır:** Bir `owner_id` için gerçek veri varsa (push edilmiş ya da CSV ile
+yüklenmiş), sistem SİMÜLASYONU bırakıp bu gerçek puanı kullanır. Veri olmayan
+oyuncular için simülasyon devam eder — yani entegrasyon aşamalı da kurulabilir,
+tüm oyuncuları aynı anda bağlamak zorunda değilsiniz. `/health` uç noktasındaki
+`real_loyalty_records` alanı kaç oyuncu için gerçek veri olduğunu gösterir.
 
 ## 🖥️ Flash Diskle Casino'ya Kurulum (Adım Adım)
 
@@ -126,6 +162,8 @@ işaretlenen sayılar otomatik renklenir, sayfa kendi kendine 3 saniyede bir gü
 | GET | `/prizes` | 🔒 Sadece toplam ödül miktarları (max_winners YOK) |
 | GET | `/reception` | 🏨 Resepsiyon personeli için misafir kayıt formu (personel anahtarı formda istenir) |
 | POST | `/reception/register` | 🏨 Misafire ücretsiz kart atar + otomatik SMS gönderir (`x-internal-key` header gerekir) |
+| POST | `/integrations/loyalty-points` | 🔌 Casino'nun CMS'i gerçek sadakat puanlarını buraya push eder (`x-internal-key` header gerekir) |
+| POST | `/integrations/loyalty-csv` | 📄 CSV yükleyerek aynısını yapar — API'ye bağlanacak IT kapasitesi yoksa yedek yol (`x-internal-key` header gerekir) |
 
 ## 🆕 Kaç Kişi Paylaşabilir? (Yapılandırılabilir Kazanan Sayısı)
 
