@@ -31,6 +31,15 @@ class Settings(BaseSettings):
     # Gürcistan: "Asia/Tbilisi", Türkiye: "Europe/Istanbul"
     CASINO_TIMEZONE: str = "Asia/Tbilisi"
 
+    # E-posta (SMTP) — çekiliş sertifikasını misafire mail ile göndermek için.
+    # Boş bırakılırsa e-posta özelliği devre dışı kalır (PDF indirme etkilenmez).
+    SMTP_HOST:     Optional[str] = None
+    SMTP_PORT:     int = 587
+    SMTP_USER:     Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_FROM:     Optional[str] = None
+    SMTP_USE_TLS:  bool = True
+
     model_config = {"env_file": ".env", "case_sensitive": True}
 
 

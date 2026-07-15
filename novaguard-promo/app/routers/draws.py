@@ -379,21 +379,15 @@ async def reset_campaign(
 
 # ── ÇEKİLİŞ SERTİFİKASI (PDF) ─────────────────────────────────────────────────
 from fastapi.responses import Response
+from pydantic import BaseModel as _BaseModel
+from starlette.concurrency import run_in_threadpool
 from ..services.certificate import generate_draw_certificate
+from ..services.mailer import send_certificate_email, MailerNotConfigured
 from ..models import Player as _Player
 
 
-@router.get("/{schedule_id}/certificate")
-async def get_draw_certificate(
-    schedule_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    _: str = Depends(require_admin),
-):
-    """
-    Çekiliş sertifikasını PDF olarak üretir.
-    "Bu çekiliş hileli mi?" sorusuna kanıtla cevap — duvara asılabilir,
-    oyuncuya gönderilebilir, denetimde ibraz edilebilir.
-    """
+async def _load_certificate_context(schedule_id: UUID, db: AsyncSession):
+    """GET (indirme) ve POST (e-posta) sertifika endpointlerinin ortak veri yükleme adımı."""
     sched_res = await db.execute(select(DrawSchedule).where(DrawSchedule.id == schedule_id))
     schedule = sched_res.scalar_one_or_none()
     if not schedule:
@@ -408,7 +402,11 @@ async def get_draw_certificate(
     winner = winner_res.scalar_one_or_none()
     winner_name = winner.name if winner else draw_result.winner_card_id
 
-    pdf_bytes = generate_draw_certificate(
+    return schedule, draw_result, winner, winner_name
+
+
+def _build_certificate_pdf(schedule, draw_result, winner_name) -> bytes:
+    return generate_draw_certificate(
         draw_id=str(schedule.id),
         draw_name=schedule.name,
         draw_tier=schedule.draw_tier.value,
@@ -427,6 +425,22 @@ async def get_draw_certificate(
         tax_paid_at=schedule.tax_paid_at,
     )
 
+
+@router.get("/{schedule_id}/certificate")
+async def get_draw_certificate(
+    schedule_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """
+    Çekiliş sertifikasını PDF olarak üretir (Türkçe / İngilizce / Gürcüce).
+    "Bu çekiliş hileli mi?" sorusuna kanıtla cevap — büyük ödüllerde aynı
+    zamanda kazanılan paranın deklarasyonu niteliğindedir. Duvara asılabilir,
+    oyuncuya gönderilebilir, denetimde ibraz edilebilir.
+    """
+    schedule, draw_result, _winner, winner_name = await _load_certificate_context(schedule_id, db)
+    pdf_bytes = _build_certificate_pdf(schedule, draw_result, winner_name)
+
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -434,6 +448,56 @@ async def get_draw_certificate(
             "Content-Disposition": f'inline; filename="cekilis-sertifikasi-{schedule.id}.pdf"'
         },
     )
+
+
+class CertificateEmailInput(_BaseModel):
+    """Boş bırakılırsa oyuncunun kayıtlı e-postası (Player.email) kullanılır."""
+    to_email: str | None = None
+
+
+@router.post("/{schedule_id}/certificate/email")
+async def email_draw_certificate(
+    schedule_id: UUID,
+    data: CertificateEmailInput = CertificateEmailInput(),
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(require_admin),
+):
+    """Sertifikayı PDF olarak üretip misafirin (veya belirtilen adresin) e-postasına gönderir."""
+    schedule, draw_result, winner, winner_name = await _load_certificate_context(schedule_id, db)
+
+    recipient = data.to_email or (winner.email if winner else None)
+    if not recipient:
+        raise HTTPException(
+            status_code=400,
+            detail="Oyuncunun kayıtlı e-postası yok — bir e-posta adresi belirtin (to_email)",
+        )
+
+    pdf_bytes = _build_certificate_pdf(schedule, draw_result, winner_name)
+    filename = f"cekilis-sertifikasi-{schedule.id}.pdf"
+    subject = f"NovaGuard — {schedule.name} / Draw Certificate / გათამაშების სერტიფიკატი"
+    body = (
+        f"{winner_name},\n\n"
+        f"\"{schedule.name}\" çekilişini kazandınız — sertifikanız ektedir.\n"
+        f"Congratulations — you won \"{schedule.name}\". Your certificate is attached.\n"
+        f"თქვენ მოიგეთ \"{schedule.name}\" — სერტიფიკატი თანდართულია.\n\n"
+        f"— {schedule.name} · NovaGuard"
+    )
+
+    try:
+        await run_in_threadpool(
+            send_certificate_email,
+            to_email=recipient,
+            subject=subject,
+            body_text=body,
+            pdf_bytes=pdf_bytes,
+            attachment_filename=filename,
+        )
+    except MailerNotConfigured as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"E-posta gönderilemedi: {e}")
+
+    return {"sent": True, "to": recipient}
 
 
 # ── Çekiliş İptal ─────────────────────────────────────────────────────────────

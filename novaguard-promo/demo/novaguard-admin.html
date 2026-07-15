@@ -500,8 +500,10 @@ const ADMIN_T = {
     noPlayersFound:'Oyuncu bulunamadı', summaryLoadError:'Özet yüklenemedi',
     drawsLoadError:'Çekilişler yüklenemedi', cancelledMsg:'İptal edildi',
     cancelError:'İptal hatası', selectDrawFirst:'Çekiliş seçilmedi',
-    fillAllFields:'Tüm alanları doldurun', taxSavedMsg:'✓ Vergi beyanı kaydedildi. Çekiliş artık yürütülebilir.',
+    fillAllFields:'Tüm alanları doldurun', taxSavedMsg:'✓ Vergi beyanı kaydedildi (bilgi amaçlı kayıt).',
     confirmCancelDraw:'çekilişini iptal et?', certOpening:'Sertifika yeni sekmede açılıyor…',
+    emailLabel:'Mail', certEmailPrompt:'E-posta adresi (boş bırakılırsa oyuncunun kayıtlı adresi kullanılır):',
+    certEmailSentMsg:'Sertifika e-posta ile gönderildi', certEmailError:'Mail gönderilemedi',
     confirmDryRun:'için KURU TATBİKAT yap?', dryRunNote:'Sonuç kaydedilmez — sadece ekranda gösterilir.',
     dryRunNoPlayers:'Uygun oyuncu yok', dryRunPrefix:'🎯 TATBİKAT — Kazanan:', dryRunSuffix:'bilet · Sonuç kaydedilmedi',
     dryRunError:'Tatbikat hatası', enterPrizeAmount:'Ödül miktarı giriniz',
@@ -572,8 +574,10 @@ const ADMIN_T = {
     noPlayersFound:'No players found', summaryLoadError:'Failed to load summary',
     drawsLoadError:'Failed to load draws', cancelledMsg:'Cancelled',
     cancelError:'Cancel error', selectDrawFirst:'No draw selected',
-    fillAllFields:'Fill in all fields', taxSavedMsg:'✓ Tax declaration saved. Draw can now be executed.',
+    fillAllFields:'Fill in all fields', taxSavedMsg:'✓ Tax declaration saved (informational record).',
     confirmCancelDraw:'Cancel this draw?', certOpening:'Opening certificate in new tab…',
+    emailLabel:'Email', certEmailPrompt:'Email address (leave blank to use the stored player email):',
+    certEmailSentMsg:'Certificate sent by email', certEmailError:'Failed to send email',
     confirmDryRun:'Run DRY RUN for', dryRunNote:'Result will not be saved — display only.',
     dryRunNoPlayers:'No eligible players', dryRunPrefix:'🎯 DRY RUN — Winner:', dryRunSuffix:'tickets · Result not saved',
     dryRunError:'Dry run error', enterPrizeAmount:'Enter prize amount',
@@ -644,8 +648,10 @@ const ADMIN_T = {
     noPlayersFound:'Игроки не найдены', summaryLoadError:'Не удалось загрузить сводку',
     drawsLoadError:'Не удалось загрузить розыгрыши', cancelledMsg:'Отменено',
     cancelError:'Ошибка отмены', selectDrawFirst:'Розыгрыш не выбран',
-    fillAllFields:'Заполните все поля', taxSavedMsg:'✓ Налоговая декларация сохранена. Розыгрыш можно проводить.',
+    fillAllFields:'Заполните все поля', taxSavedMsg:'✓ Налоговая декларация сохранена (информационная запись).',
     confirmCancelDraw:'Отменить этот розыгрыш?', certOpening:'Открытие сертификата в новой вкладке…',
+    emailLabel:'Почта', certEmailPrompt:'Адрес e-mail (оставьте пустым, чтобы использовать сохранённый адрес игрока):',
+    certEmailSentMsg:'Сертификат отправлен по почте', certEmailError:'Не удалось отправить письмо',
     confirmDryRun:'Выполнить ТЕСТ для', dryRunNote:'Результат не будет сохранён — только отображение.',
     dryRunNoPlayers:'Нет подходящих игроков', dryRunPrefix:'🎯 ТЕСТ — Победитель:', dryRunSuffix:'билетов · Результат не сохранён',
     dryRunError:'Ошибка теста', enterPrizeAmount:'Введите сумму приза',
@@ -716,8 +722,10 @@ const ADMIN_T = {
     noPlayersFound:'მოთამაშე ვერ მოიძებნა', summaryLoadError:'მიმოხილვის ჩატვირთვა ვერ მოხერხდა',
     drawsLoadError:'გათამაშებების ჩატვირთვა ვერ მოხერხდა', cancelledMsg:'გაუქმებულია',
     cancelError:'გაუქმების შეცდომა', selectDrawFirst:'გათამაშება არ არის არჩეული',
-    fillAllFields:'შეავსეთ ყველა ველი', taxSavedMsg:'✓ საგადასახადო დეკლარაცია შენახულია. გათამაშება ახლა შესაძლებელია.',
+    fillAllFields:'შეავსეთ ყველა ველი', taxSavedMsg:'✓ საგადასახადო დეკლარაცია შენახულია (საინფორმაციო ჩანაწერი).',
     confirmCancelDraw:'გავაუქმოთ ეს გათამაშება?', certOpening:'სერტიფიკატი იხსნება ახალ ჩანართში…',
+    emailLabel:'ფოსტა', certEmailPrompt:'ელფოსტის მისამართი (ცარიელი დატოვეთ მოთამაშის შენახული მისამართის გამოსაყენებლად):',
+    certEmailSentMsg:'სერტიფიკატი გაიგზავნა ელფოსტით', certEmailError:'წერილის გაგზავნა ვერ მოხერხდა',
     confirmDryRun:'ტესტური გაშვება', dryRunNote:'შედეგი არ შეინახება — მხოლოდ ეკრანზე გამოჩნდება.',
     dryRunNoPlayers:'შესაფერისი მოთამაშე არ არის', dryRunPrefix:'🎯 ტესტი — გამარჯვებული:', dryRunSuffix:'ბილეთი · შედეგი არ შენახულა',
     dryRunError:'ტესტის შეცდომა', enterPrizeAmount:'შეიყვანეთ პრიზის ოდენობა',
@@ -897,7 +905,8 @@ async function loadDraws(){
             <button class="btn btn-red" style="padding:4px 8px;font-size:11px" onclick="cancelDraw('${escapeHtml(d.id)}','${escapeHtml(d.name)}')">✕</button>
           `:`<div style="display:flex;gap:5px">
             <span style="color:var(--dim);font-size:11px">${d.status==='completed'?'✓':d.status}</span>
-            ${d.status==='completed'?`<button class="btn btn-dim" style="padding:3px 8px;font-size:10px" onclick="downloadCert('${escapeHtml(d.id)}')">📄 PDF</button>`:''}
+            ${d.status==='completed'?`<button class="btn btn-dim" style="padding:3px 8px;font-size:10px" onclick="downloadCert('${escapeHtml(d.id)}')">📄 PDF</button>
+            <button class="btn btn-dim" style="padding:3px 8px;font-size:10px" onclick="emailCert('${escapeHtml(d.id)}')">✉️ ${at('emailLabel')}</button>`:''}
           </div>`}
         </td>
       </tr>`;
@@ -937,11 +946,33 @@ async function cancelDraw(id, name){
   }catch(e){ toast(at('cancelError')+': '+e.message,'err') }
 }
 
-// Sertifika PDF indirme
-function downloadCert(scheduleId){
-  const url = `${base()}/api/v1/draws/${scheduleId}/certificate`;
-  window.open(url + `?api_key=${encodeURIComponent(key())}`, '_blank');
-  toast(at('certOpening'));
+// Sertifika PDF indirme — admin anahtarı asla URL'e/query string'e eklenmez
+// (sunucu loglarında/tarayıcı geçmişinde görünmesin diye): yetkili header ile
+// blob olarak indirilir, sonra geçici bir object URL açılır.
+async function downloadCert(scheduleId){
+  try{
+    const r = await fetch(`${base()}/api/v1/draws/${scheduleId}/certificate`, {
+      headers: {'X-Admin-Key': key()}
+    });
+    if(!r.ok) throw new Error((await r.json().catch(()=>({detail:r.statusText}))).detail || r.statusText);
+    const blob = await r.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    window.open(blobUrl, '_blank');
+    toast(at('certOpening'));
+    setTimeout(()=>URL.revokeObjectURL(blobUrl), 60000);
+  }catch(e){ toast('Hata: '+e.message,'err') }
+}
+
+// Sertifikayı misafirin (veya girilen) e-postasına gönder
+async function emailCert(scheduleId){
+  const email = prompt(at('certEmailPrompt'), '');
+  if(email === null) return; // vazgeçildi
+  try{
+    const r = await api(`/api/v1/draws/${scheduleId}/certificate/email`, {
+      method:'POST', body: JSON.stringify({to_email: email ? email.trim() : null})
+    });
+    toast(`✓ ${at('certEmailSentMsg')}: ${r.to}`);
+  }catch(e){ toast(at('certEmailError')+': '+e.message,'err') }
 }
 
 // Kuru tatbikat — kazanan seçilir ama veritabanına kaydedilmez

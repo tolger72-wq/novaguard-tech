@@ -122,12 +122,35 @@ Casino'nun sorumluluğundadır.
 GET /api/v1/draws/{id}/certificate
 ```
 
-Her tamamlanmış çekiliş için otomatik üretilir. İçerik:
-- Kazanan + bilet numarası
+Her tamamlanmış çekiliş için otomatik üretilir. Büyük ödüllerde bu sertifika
+aynı zamanda kazanılan paranın/ödülün **deklarasyonu** niteliğindedir — bu
+yüzden **Türkçe / İngilizce / Gürcüce** olmak üzere üç dilde basılır (bkz.
+`app/services/certificate.py`). Font olarak DejaVu Sans gömülüdür (paket
+içinde, internet gerektirmez) — Türkçe (ı, İ, ş, ğ) ve Gürcüce (Mkhedruli)
+karakterleri tek bir yazı tipiyle eksiksiz destekler.
+
+İçerik:
+- Kazanan + bilet numarası (üç dilde etiketli)
 - Havuz şeffaflığı (toplam bilet, oyuncu sayısı)
-- RS.GE vergi beyan numarası
+- RS.GE vergi beyan numarası (girildiyse — bilgi amaçlı, zorunlu değil)
 - SHA-256 doğrulama hash'i
 - İmza alanı
+
+### E-posta ile gönderme
+
+```
+POST /api/v1/draws/{id}/certificate/email
+X-Admin-Key: {admin_key}
+
+{
+  "to_email": "misafir@example.com"   // boş/atlanırsa oyuncunun kayıtlı e-postası kullanılır
+}
+```
+
+Misafir uzaktaysa veya sertifika duvara asmak yerine dijital olarak
+gönderilecekse kullanılır. SMTP ayarlarını `.env` dosyasında girin
+(`SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, ...) — boş bırakılırsa bu
+endpoint 503 döner, PDF indirme etkilenmez.
 
 ---
 
