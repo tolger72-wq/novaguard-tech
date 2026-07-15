@@ -1,5 +1,5 @@
 # =============================================================================
-# NovaGuard Casino Ops - Müşteri Odaklı Sistem (4 Dilli: TR / EN / RU / KA)
+# NovaGuard Casino Operations - Müşteri Odaklı Sistem (4 Dilli: TR / EN / RU / KA)
 # =============================================================================
 # 4 modül + veri kaynağından bağımsız mimari + CSV doğrulama + 4 dil desteği:
 #   1) Oyuncu Değeri & Promosyon Önerisi
@@ -179,7 +179,7 @@ PUAN_KURALLARI = {
 
 METIN = {
 "tr": {
-    "baslik": "🎰 NovaGuard Casino Ops",
+    "baslik": "🎰 NovaGuard Casino Operations",
     "alt_baslik": "Misafir odaklı, şeffaf ve açıklanabilir analiz",
     "kaynak_etiket": "Veri Kaynağı", "durum_etiket": "Durum",
     "uyari_baslik": "Veri uyarıları",
@@ -233,7 +233,7 @@ METIN = {
     "etiket_gun": "gün", "etiket_bilgi_eksik": "📝 sipariş yok", "etiket_yok": "Yok",
 },
 "en": {
-    "baslik": "🎰 NovaGuard Casino Ops",
+    "baslik": "🎰 NovaGuard Casino Operations",
     "alt_baslik": "Guest-focused, transparent and explainable analysis",
     "kaynak_etiket": "Data Source", "durum_etiket": "Status",
     "uyari_baslik": "Data warnings",
@@ -287,7 +287,7 @@ METIN = {
     "etiket_gun": "days", "etiket_bilgi_eksik": "📝 no orders", "etiket_yok": "None",
 },
 "ru": {
-    "baslik": "🎰 NovaGuard Casino Ops",
+    "baslik": "🎰 NovaGuard Casino Operations",
     "alt_baslik": "Анализ, ориентированный на гостя — прозрачный и понятный",
     "kaynak_etiket": "Источник данных", "durum_etiket": "Статус",
     "uyari_baslik": "Предупреждения о данных",
@@ -341,7 +341,7 @@ METIN = {
     "etiket_gun": "дн.", "etiket_bilgi_eksik": "📝 нет заказов", "etiket_yok": "Нет",
 },
 "ka": {
-    "baslik": "🎰 NovaGuard Casino Ops",
+    "baslik": "🎰 NovaGuard Casino Operations",
     "alt_baslik": "სტუმარზე ორიენტირებული, გამჭვირვალე და გასაგები ანალიზი",
     "kaynak_etiket": "მონაცემთა წყარო", "durum_etiket": "სტატუსი",
     "uyari_baslik": "მონაცემთა გაფრთხილებები",
@@ -917,7 +917,7 @@ def html_olustur(kaynak, dil, sekme=0, sayfalar=None):
 
     return f"""<!DOCTYPE html><html lang="{dil}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NovaGuard Casino Ops</title><style>
+<title>NovaGuard Casino Operations</title><style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:system-ui,Arial,sans-serif;background:#0f172a;color:#e2e8f0;padding:20px}}
 h1{{font-size:22px;margin-bottom:4px}}
@@ -1027,7 +1027,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _yetkisiz_iste(self):
         self.send_response(401)
-        self.send_header("WWW-Authenticate", 'Basic realm="NovaGuard Casino Ops"')
+        self.send_header("WWW-Authenticate", 'Basic realm="NovaGuard Casino Operations"')
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
         self.wfile.write("401 Unauthorized".encode("utf-8"))
@@ -1161,7 +1161,7 @@ def main():
         protokol = "https"
 
     print("=" * 52)
-    print("  NovaGuard Casino Ops çalışıyor")
+    print("  NovaGuard Casino Operations çalışıyor")
     print(f"  Veri kaynağı:  {AYAR['kaynak']}   |  Varsayılan dil: {AYAR['dil']}")
     print(f"  Adres:         {protokol}://{host}:{port}")
     print("  Durdurmak için: Ctrl + C")
