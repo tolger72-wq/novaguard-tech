@@ -4,3 +4,4 @@ sqlalchemy
 pydantic
 qrcode[pil]
 twilio
+python-multipart
