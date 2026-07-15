@@ -23,23 +23,47 @@
 #   koddur, dışarıya hiç gitmez. Yani modüller veriyi İngilizce alanlardan
 #   OKUR, ama kendi aralarında Türkçe isimlerle konuşmaya devam eder.
 #
-# KURULUM YOK. Sadece Python gerekir.
+# KURULUM YOK. Sadece Python gerekir (stdlib dışında bağımlılık yok).
 # Çalıştırma:  python casino_ops.py
 # Dil değiştirme: sayfanın altındaki TR / EN / RU / KA butonları
 # Veri alma: POST /api/players, /api/table_results, /api/fb_orders
+#
+# PRODÜKSİYON / DEPLOYMENT NOTLARI:
+#   - Panel (GET /) artık HTTP Basic Auth ile korunuyor. Kullanıcı/şifreyi
+#     NOVAGUARD_PANEL_USER / NOVAGUARD_PANEL_PASS ortam değişkenleriyle
+#     her müşteri kurulumunda MUTLAKA değiştirin.
+#   - Köprü script anahtarını NOVAGUARD_API_KEY ortam değişkeniyle verin
+#     (kod içindeki AYAR["api_anahtari"] sadece yerel/geliştirme fallback'i).
+#   - TLS: NOVAGUARD_SSL_CERT ve NOVAGUARD_SSL_KEY tanımlanırsa sunucu
+#     doğrudan HTTPS ile çalışır. Tanımlanmazsa HTTP çalışır ve önünde
+#     bir reverse proxy (nginx/Caddy) ile TLS sonlandırması ŞİDDETLE
+#     ÖNERİLİR — özellikle localhost dışında erişilebiliyorsa.
+#   - NOVAGUARD_HOST (varsayılan 0.0.0.0) ve PORT (varsayılan 8000) ile
+#     bind adresini/portunu değiştirebilirsiniz.
 # =============================================================================
 
-import json
+import base64
 import csv
+import hmac
+import html
+import json
+import logging
 import os
-import webbrowser
+import ssl
 import threading
 import time
-import urllib.request
 import urllib.error
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import urllib.request
+import webbrowser
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 from collections import Counter
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+log = logging.getLogger("novaguard")
 
 
 # =============================================================================
@@ -50,9 +74,24 @@ AYAR = {
     "kaynak": "ornek",   # "ornek" | "csv" | "api"
     "dil": "tr",          # varsayılan dil: "tr" | "en" | "ru" | "ka"
 
+    "host": os.environ.get("NOVAGUARD_HOST", "0.0.0.0"),
+    "port": int(os.environ.get("PORT", "8000")),
+
     # Casino'nun köprü scripti bize veri gönderirken bu anahtarı
-    # X-NovaGuard-Key başlığında göndermeli. Rastgele, uzun bir şeyle değiştir.
-    "api_anahtari": "DEGISTIR_BU_ANAHTARI_2026",
+    # X-NovaGuard-Key başlığında göndermeli. PRODÜKSİYONDA NOVAGUARD_API_KEY
+    # ortam değişkeniyle verin — buradaki değer sadece yerel geliştirme fallback'i.
+    "api_anahtari": os.environ.get("NOVAGUARD_API_KEY", "DEGISTIR_BU_ANAHTARI_2026"),
+
+    # Dashboard'a (GET /) giriş için HTTP Basic Auth. PRODÜKSİYONDA
+    # NOVAGUARD_PANEL_USER / NOVAGUARD_PANEL_PASS ile MUTLAKA değiştirin.
+    "panel_kullanici": os.environ.get("NOVAGUARD_PANEL_USER", "admin"),
+    "panel_sifre": os.environ.get("NOVAGUARD_PANEL_PASS", "DEGISTIR_BU_SIFREYI_2026"),
+
+    # TLS sertifikası/anahtarı (opsiyonel). Her ikisi de doluysa sunucu
+    # doğrudan HTTPS ile çalışır. Boşsa HTTP çalışır — bu durumda önüne
+    # TLS sonlandıran bir reverse proxy koymanız önerilir.
+    "ssl_cert": os.environ.get("NOVAGUARD_SSL_CERT", ""),
+    "ssl_key": os.environ.get("NOVAGUARD_SSL_KEY", ""),
 
     # CSV dosya yolları — DOSYA ADLARI ve İÇİNDEKİ SÜTUN ADLARI İngilizce.
     "csv": {
@@ -62,8 +101,8 @@ AYAR = {
     },
 
     "api": {
-        "base_url": "https://musteri-casino.example.com/api",
-        "api_key": "BURAYA_MUSTERI_ANAHTARI",
+        "base_url": os.environ.get("NOVAGUARD_CUSTOMER_API_URL", "https://musteri-casino.example.com/api"),
+        "api_key": os.environ.get("NOVAGUARD_CUSTOMER_API_KEY", "BURAYA_MUSTERI_ANAHTARI"),
         "endpoints": {
             "players": "/players",
             "table_results": "/table-results",
@@ -680,6 +719,16 @@ SEVIYE_RENK = {"platin": "#a855f7", "altin": "#d97706", "gumus": "#94a3b8", "bro
 ONCELIK_RENK = {"yuksek": "#dc2626", "orta": "#d97706", "dusuk": "#6b7280"}
 
 
+def esc(deger):
+    """Casino'nun kendi CSV/API'sinden gelen (bizim kontrolümüzde olmayan)
+    her değeri HTML'e basmadan önce escape eder. Oyuncu adı, F&B tercihi,
+    oyun/masa kodu gibi alanlar müşteri verisidir — kaçırılmazsa dashboard'a
+    zararlı HTML/script enjekte edilebilir (XSS)."""
+    if deger is None:
+        return ""
+    return html.escape(str(deger), quote=True)
+
+
 def html_olustur(kaynak, dil):
     if dil not in METIN:
         dil = AYAR["dil"]
@@ -692,7 +741,7 @@ def html_olustur(kaynak, dil):
 
     uyari_html = ""
     if kaynak.uyarilar:
-        liste = "".join(f"<li>{u}</li>" for u in kaynak.uyarilar)
+        liste = "".join(f"<li>{esc(u)}</li>" for u in kaynak.uyarilar)
         uyari_html = f"""<div class="uyari">
           <b>⚠️ {m['uyari_baslik']} ({len(kaynak.uyarilar)}):</b>
           <ul>{liste}</ul>
@@ -703,7 +752,7 @@ def html_olustur(kaynak, dil):
     for o in oyuncular:
         rg = " ⚠️" if o["rg_flag"] else ""
         renk = ONCELIK_RENK[o["oncelik_kod"]]
-        oyuncu_satir += f"""<tr><td>{o['ad']}{rg}</td><td><b>{o['theo']:,}</b></td>
+        oyuncu_satir += f"""<tr><td>{esc(o['ad'])}{rg}</td><td><b>{o['theo']:,}</b></td>
             <td>{o['adt']:,}</td><td>{o['visits']}</td><td>{o['days_since']} {m['etiket_gun']}</td>
             <td><span class="seg">{m['seg_'+o['segment_kod']]}</span></td>
             <td>{m['promo_'+o['promosyon_kod']]}</td>
@@ -719,9 +768,9 @@ def html_olustur(kaynak, dil):
         if s["oyun_tercihi_kod"] and ("onot_" + s["oyun_tercihi_kod"]) in m:
             hediye = f"{hediye} + {m['onot_' + s['oyun_tercihi_kod']]}"
         oyun_metni = m.get("oyun_" + (s["oyun_tercihi_kod"] or ""), "—")
-        sadakat_satir += f"""<tr><td>{s['ad']}{uyari}</td><td><b>{s['puan']}</b></td>
+        sadakat_satir += f"""<tr><td>{esc(s['ad'])}{uyari}</td><td><b>{s['puan']}</b></td>
             <td><span class="seg" style="background:{renk};color:#0f172a;font-weight:700">{m['sev_'+s['seviye_kod']]}</span></td>
-            <td>{s['fb_tercih']}</td><td>{oyun_metni}</td>
+            <td>{esc(s['fb_tercih'])}</td><td>{oyun_metni}</td>
             <td>{hediye}</td></tr>"""
     if not sadakat_satir:
         sadakat_satir = f'<tr><td colspan="6">{m["veri_gelmedi"]}</td></tr>'
@@ -730,21 +779,21 @@ def html_olustur(kaynak, dil):
     for f in fb_liste:
         etiket = f' <span style="color:#f59e0b;font-size:11px">{m["etiket_bilgi_eksik"]}</span>' if f["eksik"] else ""
         if f["kalemler"]:
-            servis_notu = m["servis_var_on"] + ", ".join(f["kalemler"])
+            servis_notu = esc(m["servis_var_on"] + ", ".join(f["kalemler"]))
         else:
             servis_notu = m["servis_yok"]
-        fb_satir += f"""<tr><td>{f['ad']}{etiket}</td>
-            <td>{f['kahve'] or m['etiket_yok']}</td><td>{f['icecek'] or m['etiket_yok']}</td>
-            <td>{f['cerez'] or m['etiket_yok']}</td><td>{f['alkol'] or m['etiket_yok']}</td>
+        fb_satir += f"""<tr><td>{esc(f['ad'])}{etiket}</td>
+            <td>{esc(f['kahve']) or m['etiket_yok']}</td><td>{esc(f['icecek']) or m['etiket_yok']}</td>
+            <td>{esc(f['cerez']) or m['etiket_yok']}</td><td>{esc(f['alkol']) or m['etiket_yok']}</td>
             <td style="color:#86efac">{servis_notu}</td></tr>"""
     if not fb_satir:
         fb_satir = f'<tr><td colspan="6">{m["veri_gelmedi"]}</td></tr>'
 
     anomali_satir = ""
     for a in anomali:
-        oyun_metni = m.get("oyun_" + a["oyun_kod"], a["oyun_kod"])
+        oyun_metni = m.get("oyun_" + a["oyun_kod"], esc(a["oyun_kod"]))
         durum_metni = m["durum_" + a["durum_kod"]]
-        anomali_satir += f"""<tr><td>{a['masa']}</td><td>{oyun_metni}</td><td>{a['drop']:,}</td>
+        anomali_satir += f"""<tr><td>{esc(a['masa'])}</td><td>{oyun_metni}</td><td>{a['drop']:,}</td>
             <td>{a['beklenen']}</td><td>{a['gercek']}</td><td>{a['sapma_yuzde']:+}%</td>
             <td>{a['fark']:+,}</td><td>{durum_metni}</td></tr>"""
     if not anomali_satir:
@@ -847,9 +896,31 @@ def tarayici_dilini_algila(accept_language_header):
 
 
 class Handler(BaseHTTPRequestHandler):
+    def _panel_yetkili_mi(self):
+        """GET / (dashboard) için HTTP Basic Auth doğrulaması.
+        Oyuncuların finansal/davranışsal verisi burada gösterildiği için
+        panel anahtarsız/parolasız erişime açık BIRAKILMAMALI."""
+        beklenen = "Basic " + base64.b64encode(
+            f"{AYAR['panel_kullanici']}:{AYAR['panel_sifre']}".encode("utf-8")
+        ).decode("ascii")
+        gelen = self.headers.get("Authorization", "")
+        return hmac.compare_digest(gelen, beklenen)
+
+    def _yetkisiz_iste(self):
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="NovaGuard Casino Ops"')
+        self.send_header("Content-type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write("401 Unauthorized".encode("utf-8"))
+
     def do_GET(self):
         parsed = urlparse(self.path)
         if parsed.path == "/":
+            if not self._panel_yetkili_mi():
+                log.warning("Yetkisiz panel erişim denemesi: %s", self.client_address[0])
+                self._yetkisiz_iste()
+                return
+
             qs = parse_qs(parsed.query)
             if "dil" in qs:
                 dil = qs["dil"][0]
@@ -884,7 +955,9 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         gelen_anahtar = self.headers.get("X-NovaGuard-Key", "")
-        if gelen_anahtar != AYAR["api_anahtari"]:
+        if not hmac.compare_digest(gelen_anahtar, AYAR["api_anahtari"]):
+            log.warning("Geçersiz X-NovaGuard-Key ile POST denemesi: %s → %s",
+                        self.client_address[0], parsed.path)
             self._json_yanit(401, {"basarili": False, "hata": "Geçersiz veya eksik anahtar (X-NovaGuard-Key)"})
             return
 
@@ -928,22 +1001,56 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(veri, ensure_ascii=False).encode("utf-8"))
 
-    def log_message(self, *args): pass
+    def log_message(self, format, *args):
+        log.info("%s - %s", self.client_address[0], format % args)
+
+
+def _varsayilan_sir_uyarilari():
+    """Satış/prod kurulumunda unutulmuş varsayılan sırları başlangıçta uyarır."""
+    uyarilar = []
+    if AYAR["api_anahtari"] == "DEGISTIR_BU_ANAHTARI_2026":
+        uyarilar.append("NOVAGUARD_API_KEY ortam değişkeni tanımlı değil — varsayılan köprü anahtarı kullanılıyor.")
+    if AYAR["panel_sifre"] == "DEGISTIR_BU_SIFREYI_2026":
+        uyarilar.append("NOVAGUARD_PANEL_PASS ortam değişkeni tanımlı değil — varsayılan panel şifresi kullanılıyor.")
+    return uyarilar
 
 
 def main():
-    port = 8000
+    host = AYAR["host"]
+    port = AYAR["port"]
+
+    sunucu = ThreadingHTTPServer((host, port), Handler)
+
+    protokol = "http"
+    if AYAR["ssl_cert"] and AYAR["ssl_key"]:
+        baglam = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        baglam.load_cert_chain(certfile=AYAR["ssl_cert"], keyfile=AYAR["ssl_key"])
+        sunucu.socket = baglam.wrap_socket(sunucu.socket, server_side=True)
+        protokol = "https"
+
     print("=" * 52)
     print("  NovaGuard Casino Ops çalışıyor")
     print(f"  Veri kaynağı:  {AYAR['kaynak']}   |  Varsayılan dil: {AYAR['dil']}")
-    print(f"  Tarayıcı:      http://localhost:{port}")
+    print(f"  Adres:         {protokol}://{host}:{port}")
     print("  Durdurmak için: Ctrl + C")
+    for uyari in _varsayilan_sir_uyarilari():
+        print(f"  ⚠️  {uyari}")
+    if protokol == "http":
+        print("  ⚠️  TLS tanımlı değil — localhost dışına açacaksanız TLS")
+        print("      sonlandıran bir reverse proxy (nginx/Caddy) kullanın.")
     print("=" * 52)
-    def ac():
-        time.sleep(1); webbrowser.open(f"http://localhost:{port}")
-    threading.Thread(target=ac, daemon=True).start()
+
+    if os.environ.get("NOVAGUARD_OPEN_BROWSER", "1") not in ("0", "false", "False"):
+        def ac():
+            time.sleep(1)
+            try:
+                webbrowser.open(f"{protokol}://localhost:{port}")
+            except Exception:
+                pass
+        threading.Thread(target=ac, daemon=True).start()
+
     try:
-        HTTPServer(("", port), Handler).serve_forever()
+        sunucu.serve_forever()
     except KeyboardInterrupt:
         print("\nKapatıldı.")
 
