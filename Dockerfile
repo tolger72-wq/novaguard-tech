@@ -1,4 +1,4 @@
-# NovaGuard Casino Ops — stdlib-only Python, so the image needs nothing
+# NovaGuard Casino Operations — stdlib-only Python, so the image needs nothing
 # beyond the interpreter itself.
 FROM python:3.12-slim
 
