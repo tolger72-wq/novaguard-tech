@@ -92,6 +92,20 @@ class Winners(Base):
     week_start_date = Column(DateTime, nullable=True, index=True)
 
 
+class LoyaltyPoints(Base):
+    """
+    Casino'nun gerçek CMS/CRM'inden gelen sadakat puanları. integrations.py'deki
+    CasinoSystem uydurma (simülasyon) veri üretir; bir owner_id burada bulunursa
+    artık o simülasyon değeri yerine BU gerçek değer kullanılır. Satırlar,
+    /integrations/loyalty-points (API push) veya /integrations/loyalty-csv
+    (CSV yükleme) ile doldurulur — bkz. app.py.
+    """
+    __tablename__ = "loyalty_points"
+    owner_id = Column(String, primary_key=True)
+    points = Column(Integer, nullable=False)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
 
