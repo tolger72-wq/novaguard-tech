@@ -44,3 +44,18 @@ pytest tests/ -v
 - **`/renew` artık tutar bildirmeden geçmiyor** (`amount` zorunlu) — ödeme
   tahsilatı bu serviste yapılmaz (çağıran taraf doğrular), ama en azından
   denetim/mutabakat kaydı boş kalmıyor.
+- **Sinir ağı artık gerçekten eğitilebiliyor** — `FeedforwardNet.train()` gerçek
+  geri yayılım/gradyan inişi yapıyor, `POST /v1/{product_id}/neural/train` ile
+  etiketli örneklerle çağrılır. Eğitilmiş ağırlıklar artık kalıcı (restart'ta
+  kaybolmuyor). Eğitilmemiş bir ağın çıktısı (rastgele ağırlıklardan gelir)
+  `/decide` tarafından artık bir "AI kararı" olarak sunulmuyor — `trained`
+  bayrağı false ise `PrefrontalCortex` bunu görmezden gelip varsayılan
+  işleme düşüyor.
+- **CORS artık yapılandırılabilir** — `NANS_CORS_ORIGINS` (virgülle ayrılmış
+  origin listesi) ile daraltılabilir; ayarlanmazsa `*` kullanılır ve bir
+  uyarı loglanır.
+- **Aynı lisansa eşzamanlı istekler artık bir kilit altında sıralanıyor**
+  (`LicenseManager._lock`, `RLock`) — check-in/renew/suspend/reactivate/
+  cihaz kaldırma/lisans oluşturma artık aynı lisans üzerinde birbirini
+  ezmiyor. Webhook gönderimi gibi ağ I/O'su kilit DIŞINDA yapılır, yavaş
+  bir webhook diğer isteklerin beklemesine yol açmaz.

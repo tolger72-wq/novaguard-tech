@@ -20,7 +20,7 @@ import secrets
 import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
-from threading import Lock
+from threading import Lock, RLock
 from typing import Dict, List, Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -81,6 +81,27 @@ def _load_or_create_master_key() -> str:
 MASTER_API_KEY = _load_or_create_master_key()
 
 
+def _load_cors_origins() -> List[str]:
+    """
+    NANS_CORS_ORIGINS — virgülle ayrılmış izinli origin listesi, örn.
+    "https://admin.novaguard.example,https://panel.novaguard.example".
+    Ayarlanmazsa "*" (herkese açık) kullanılır — kimlik doğrulama header
+    bazlı olduğu (çerez değil) için düşük risklidir, ama prodüksiyonda
+    daraltılması önerilir.
+    """
+    raw = os.environ.get("NANS_CORS_ORIGINS")
+    if not raw:
+        logger.warning(
+            "⚠️  NANS_CORS_ORIGINS ayarlanmamış! CORS herkese açık (*) — "
+            "prodüksiyonda admin panelinizin adresine daraltmanız önerilir."
+        )
+        return ["*"]
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+
+CORS_ORIGINS = _load_cors_origins()
+
+
 # ══════════════════════════════════════════════════════════════
 #  BÖLÜM 1 — NEURAL LAYER
 # ══════════════════════════════════════════════════════════════
@@ -92,7 +113,19 @@ def _sigmoid(x: float) -> float:
         return 0.0 if x < 0 else 1.0
 
 
+def _sigmoid_deriv(y: float) -> float:
+    """y, sigmoid'in ÇIKTISI (zaten hesaplanmış aktivasyon) — türev y*(1-y)."""
+    return y * (1.0 - y)
+
+
 class FeedforwardNet:
+    """
+    Tek gizli katmanlı, sigmoid aktivasyonlu basit bir ileri beslemeli ağ.
+    train() ile gerçek gradyan inişi/geri yayılım yapılabilir — eğitilmeden
+    sadece rastgele (ama sabit tohumlu, tekrarlanabilir) ağırlıklarla kurulur;
+    /neural/predict eğitim yapılmadan çağrılırsa bu, anlamlı bir tahmin değil,
+    rastgele bir çıktı döner (bkz. app'ta /neural/train endpoint'i).
+    """
     def __init__(self, input_size: int, hidden_size: int, output_size: int, seed: int = 42):
         rnd = random.Random(seed)
         self.w1 = [[rnd.uniform(-1, 1) for _ in range(hidden_size)] for _ in range(input_size)]
@@ -102,8 +135,10 @@ class FeedforwardNet:
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.output_size = output_size
+        self.trained_examples = 0
+        self.last_loss: Optional[float] = None
 
-    def predict(self, inputs: List[float]) -> List[float]:
+    def _forward(self, inputs: List[float]) -> tuple[List[float], List[float]]:
         if len(inputs) != self.input_size:
             raise ValueError(f"Beklenen giriş boyutu {self.input_size}, alınan {len(inputs)}")
         hidden = []
@@ -118,7 +153,75 @@ class FeedforwardNet:
             for h in range(self.hidden_size):
                 total += hidden[h] * self.w2[h][o]
             outputs.append(_sigmoid(total))
+        return hidden, outputs
+
+    def predict(self, inputs: List[float]) -> List[float]:
+        _, outputs = self._forward(inputs)
         return outputs
+
+    def _train_step(self, inputs: List[float], targets: List[float], lr: float) -> float:
+        """Tek örnek üzerinde bir gradyan inişi adımı (klasik backprop). MSE kaybını döner."""
+        if len(targets) != self.output_size:
+            raise ValueError(f"Beklenen hedef boyutu {self.output_size}, alınan {len(targets)}")
+        hidden, outputs = self._forward(inputs)
+
+        # Çıkış katmanı hatası: dL/dz_o = (output - target) * sigmoid'(output)
+        output_delta = [(outputs[o] - targets[o]) * _sigmoid_deriv(outputs[o]) for o in range(self.output_size)]
+        loss = sum((outputs[o]-targets[o])**2 for o in range(self.output_size)) / self.output_size
+
+        # Gizli katman hatası: dL/dz_h = (W2 · output_delta) * sigmoid'(hidden)
+        hidden_delta = []
+        for h in range(self.hidden_size):
+            grad = sum(self.w2[h][o] * output_delta[o] for o in range(self.output_size))
+            hidden_delta.append(grad * _sigmoid_deriv(hidden[h]))
+
+        # Ağırlık/bias güncellemeleri
+        for h in range(self.hidden_size):
+            for o in range(self.output_size):
+                self.w2[h][o] -= lr * hidden[h] * output_delta[o]
+        for o in range(self.output_size):
+            self.b2[o] -= lr * output_delta[o]
+
+        for i in range(self.input_size):
+            for h in range(self.hidden_size):
+                self.w1[i][h] -= lr * inputs[i] * hidden_delta[h]
+        for h in range(self.hidden_size):
+            self.b1[h] -= lr * hidden_delta[h]
+
+        return loss
+
+    def train(self, examples: List[tuple[List[float], List[float]]], epochs: int = 200, lr: float = 0.15) -> float:
+        """
+        examples: [(inputs, targets), ...] — etiketli örnekler (ör. geçmişte insan onayı
+        gerektiren/gerektirmeyen kararlar). epochs kadar tüm veri seti üzerinden geçer.
+        Son epoch'un ortalama kaybını döner (düşüyorsa ağ gerçekten öğreniyor demektir).
+        """
+        if not examples:
+            raise ValueError("En az bir eğitim örneği gerekli")
+        avg_loss = 0.0
+        for _ in range(epochs):
+            total = 0.0
+            for inputs, targets in examples:
+                total += self._train_step(inputs, targets, lr)
+            avg_loss = total / len(examples)
+        self.trained_examples += len(examples)
+        self.last_loss = avg_loss
+        return avg_loss
+
+    def to_dict(self) -> Dict:
+        return {
+            "input_size": self.input_size, "hidden_size": self.hidden_size, "output_size": self.output_size,
+            "w1": self.w1, "b1": self.b1, "w2": self.w2, "b2": self.b2,
+            "trained_examples": self.trained_examples, "last_loss": self.last_loss,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict) -> "FeedforwardNet":
+        net = cls(d["input_size"], d["hidden_size"], d["output_size"])
+        net.w1, net.b1, net.w2, net.b2 = d["w1"], d["b1"], d["w2"], d["b2"]
+        net.trained_examples = d.get("trained_examples", 0)
+        net.last_loss = d.get("last_loss")
+        return net
 
 
 # ══════════════════════════════════════════════════════════════
@@ -211,7 +314,10 @@ class PrefrontalCortex:
             d = {"action": "INSAN_ONAYI_GEREKLI", "reason": "Kritik risk", "confidence": 0.9}
         elif habit is not None:
             d = {"action": habit, "reason": "Öğrenilmiş alışkanlık", "confidence": 0.75}
-        elif neural_result:
+        elif neural_result and neural_result.get("trained"):
+            # Eğitilmemiş bir ağın (rastgele ağırlıklar) çıktısı bir karara dönüştürülmez —
+            # bkz. FeedforwardNet.train / POST /neural/train. Aksi halde "NEURAL_ONERI"
+            # etiketiyle sunulan şey aslında gürültüden ibaret olurdu.
             d = {"action": "NEURAL_ONERI", "reason": "Sinir ağı tahmini",
                  "confidence": neural_result.get("confidence", 0.5), "detail": neural_result}
         else:
@@ -378,59 +484,75 @@ class LicenseManager:
         self.licenses: Dict[str, License] = {}
         self.limbic = limbic
         self.alert_webhook_url = alert_webhook_url
+        # Aynı lisansa eşzamanlı check-in/renew/suspend istekleri gelirse (birden
+        # fazla thread'de işlenen istekler) durum güncellemeleri birbirini
+        # ezmesin diye tüm mutasyonlar bu kilit altında yapılır. RLock: check_in
+        # kritik risk durumunda kendi içinde suspend()'i çağırıyor — aynı thread'in
+        # kilidi yeniden alabilmesi (deadlock olmadan) gerekiyor. Webhook gönderimi
+        # gibi ağ I/O'su KİLİT DIŞINDA yapılır — aksi halde yavaş/erişilemeyen bir
+        # webhook, o lisansa gelen diğer tüm istekleri bloklardı.
+        self._lock = RLock()
 
     def create_license(self, license_key: str, customer_name: str, plan: str,
                         max_devices: int, expires_at: Optional[str], grace_days: int = 7) -> License:
-        lic = License(license_key, customer_name, plan, max_devices, expires_at, grace_days)
-        self.licenses[license_key] = lic
-        return lic
+        with self._lock:
+            if license_key in self.licenses:
+                raise ValueError("Bu lisans zaten kayıtlı")
+            lic = License(license_key, customer_name, plan, max_devices, expires_at, grace_days)
+            self.licenses[license_key] = lic
+            return lic
 
     def suspend(self, license_key: str, reason: str) -> Dict:
-        lic = self.licenses.get(license_key)
-        if not lic:
-            return {"error": "Lisans bulunamadı"}
-        lic.status = LicenseStatus.SUSPENDED
+        with self._lock:
+            lic = self.licenses.get(license_key)
+            if not lic:
+                return {"error": "Lisans bulunamadı"}
+            lic.status = LicenseStatus.SUSPENDED
+            customer_name = lic.customer_name
         if self.alert_webhook_url:
             _send_webhook(self.alert_webhook_url, {
                 "event": "license_suspended", "license_key": license_key,
-                "customer": lic.customer_name, "reason": reason,
+                "customer": customer_name, "reason": reason,
             })
         return {"status": "askıya alındı", "reason": reason}
 
     def reactivate(self, license_key: str) -> Dict:
-        lic = self.licenses.get(license_key)
-        if not lic:
-            return {"error": "Lisans bulunamadı"}
-        lic.status = LicenseStatus.ACTIVE
-        lic.grace_started_at = None
+        with self._lock:
+            lic = self.licenses.get(license_key)
+            if not lic:
+                return {"error": "Lisans bulunamadı"}
+            lic.status = LicenseStatus.ACTIVE
+            lic.grace_started_at = None
         return {"status": "yeniden aktif edildi"}
 
     def renew(self, license_key: str, new_expires_at: str,
               payment_method: str, amount: Optional[float] = None,
               note: Optional[str] = None) -> Dict:
         """Ödeme onaylandığında (banka/kart/USDT fark etmez) bu çağrılır."""
-        lic = self.licenses.get(license_key)
-        if not lic:
-            return {"error": "Lisans bulunamadı"}
+        with self._lock:
+            lic = self.licenses.get(license_key)
+            if not lic:
+                return {"error": "Lisans bulunamadı"}
 
-        lic.expires_at = new_expires_at
-        lic.status = LicenseStatus.ACTIVE
-        lic.grace_started_at = None
-        lic.payment_method = payment_method
-        lic.last_payment_at = datetime.now().isoformat()
-        lic.payment_history.append({
-            "date": lic.last_payment_at, "method": payment_method,
-            "amount": amount, "note": note, "new_expires_at": new_expires_at,
-        })
-        lic.payment_history = lic.payment_history[-50:]
+            lic.expires_at = new_expires_at
+            lic.status = LicenseStatus.ACTIVE
+            lic.grace_started_at = None
+            lic.payment_method = payment_method
+            lic.last_payment_at = datetime.now().isoformat()
+            lic.payment_history.append({
+                "date": lic.last_payment_at, "method": payment_method,
+                "amount": amount, "note": note, "new_expires_at": new_expires_at,
+            })
+            lic.payment_history = lic.payment_history[-50:]
+            lic_dict = lic.to_dict()
 
         if self.alert_webhook_url:
             _send_webhook(self.alert_webhook_url, {
                 "event": "license_renewed", "license_key": license_key,
-                "customer": lic.customer_name, "method": payment_method,
+                "customer": lic_dict["customer_name"], "method": payment_method,
                 "new_expires_at": new_expires_at,
             })
-        return {"status": "yenilendi", "license": lic.to_dict()}
+        return {"status": "yenilendi", "license": lic_dict}
 
     def sweep_expiries(self) -> List[Dict]:
         """
@@ -440,30 +562,39 @@ class LicenseManager:
         Dönen liste: bu taramada etkilenen lisansların özetini içerir.
         """
         events = []
-        for lic in self.licenses.values():
+        for lic in list(self.licenses.values()):
             # Tek bir lisanstaki bozuk/eski bir tarih (ör. elle düzenlenmiş veri, eski
             # bir formattan migrasyon) tüm taramayı çökertip DİĞER TÜM ürünlerin/
             # lisansların süre kontrolünü o gün sessizce devre dışı bırakmasın diye
-            # her lisans kendi try/except'inde işleniyor.
+            # her lisans kendi try/except'inde işleniyor. Durum değişikliği kısa
+            # süreli kilit altında yapılır, webhook gönderimi (yavaş olabilir)
+            # kilit dışında — aynı anda gelen bir check-in/renew ile yarışmasın.
+            webhook_payload = None
+            should_suspend = False
             try:
-                if lic.status == LicenseStatus.ACTIVE and lic.is_past_expiry():
-                    lic.status = LicenseStatus.GRACE
-                    lic.grace_started_at = datetime.now().isoformat()
-                    events.append({"license_key": lic.license_key, "event": "grace_started",
-                                    "customer": lic.customer_name, "grace_days": lic.grace_days})
-                    if self.alert_webhook_url:
-                        _send_webhook(self.alert_webhook_url, {
-                            "event": "payment_reminder", "license_key": lic.license_key,
-                            "customer": lic.customer_name,
-                            "message": f"Lisans süresi doldu, {lic.grace_days} gün ödeme bekleme süresi başladı.",
-                        })
+                with self._lock:
+                    if lic.status == LicenseStatus.ACTIVE and lic.is_past_expiry():
+                        lic.status = LicenseStatus.GRACE
+                        lic.grace_started_at = datetime.now().isoformat()
+                        events.append({"license_key": lic.license_key, "event": "grace_started",
+                                        "customer": lic.customer_name, "grace_days": lic.grace_days})
+                        if self.alert_webhook_url:
+                            webhook_payload = {
+                                "event": "payment_reminder", "license_key": lic.license_key,
+                                "customer": lic.customer_name,
+                                "message": f"Lisans süresi doldu, {lic.grace_days} gün ödeme bekleme süresi başladı.",
+                            }
+                    elif lic.status == LicenseStatus.GRACE:
+                        deadline = lic.grace_deadline()
+                        should_suspend = bool(deadline and datetime.now() > deadline)
 
-                elif lic.status == LicenseStatus.GRACE:
-                    deadline = lic.grace_deadline()
-                    if deadline and datetime.now() > deadline:
-                        self.suspend(lic.license_key, reason="Ödeme bekleme süresi doldu")
-                        events.append({"license_key": lic.license_key, "event": "auto_suspended",
-                                        "customer": lic.customer_name})
+                if webhook_payload:
+                    _send_webhook(self.alert_webhook_url, webhook_payload)
+
+                if should_suspend:
+                    self.suspend(lic.license_key, reason="Ödeme bekleme süresi doldu")
+                    events.append({"license_key": lic.license_key, "event": "auto_suspended",
+                                    "customer": lic.customer_name})
             except Exception as e:
                 logger.error(f"Lisans taraması hatası [{lic.license_key}]: {e} — bu lisans atlanıyor, "
                               f"tarama diğer lisanslar için devam ediyor.")
@@ -472,69 +603,77 @@ class LicenseManager:
         return events
 
     def check_in(self, license_key: str, device_id: str, ip: Optional[str] = None) -> Dict:
-        lic = self.licenses.get(license_key)
-        if not lic:
-            return {"allowed": False, "reason": "Lisans bulunamadı"}
+        webhook_payload = None  # kilit dışında, en sonda gönderilecek (varsa)
+        with self._lock:
+            lic = self.licenses.get(license_key)
+            if not lic:
+                return {"allowed": False, "reason": "Lisans bulunamadı"}
 
-        if lic.status == LicenseStatus.SUSPENDED:
-            return {"allowed": False, "reason": "Lisans askıya alınmış (ödeme bekleniyor)"}
-        if lic.status == LicenseStatus.CANCELLED:
-            return {"allowed": False, "reason": "Lisans iptal edilmiş"}
+            if lic.status == LicenseStatus.SUSPENDED:
+                return {"allowed": False, "reason": "Lisans askıya alınmış (ödeme bekleniyor)"}
+            if lic.status == LicenseStatus.CANCELLED:
+                return {"allowed": False, "reason": "Lisans iptal edilmiş"}
 
-        warnings = []
-        if lic.status == LicenseStatus.GRACE:
-            deadline = lic.grace_deadline()
-            days_left = (deadline - datetime.now()).days if deadline else 0
-            warnings.append(f"Ödeme bekleniyor — {max(days_left,0)} gün içinde erişim kesilecek.")
+            warnings = []
+            if lic.status == LicenseStatus.GRACE:
+                deadline = lic.grace_deadline()
+                days_left = (deadline - datetime.now()).days if deadline else 0
+                warnings.append(f"Ödeme bekleniyor — {max(days_left,0)} gün içinde erişim kesilecek.")
 
-        now = datetime.now()
-        lic.usage_log.append({"device_id": device_id, "ip": ip, "timestamp": now.isoformat()})
-        lic.usage_log = lic.usage_log[-200:]
-        lic.known_devices[device_id] = now.isoformat()
+            now = datetime.now()
+            lic.usage_log.append({"device_id": device_id, "ip": ip, "timestamp": now.isoformat()})
+            lic.usage_log = lic.usage_log[-200:]
+            lic.known_devices[device_id] = now.isoformat()
 
-        # NOT: len(lic.known_devices) değil, active_device_ids() kullanılıyor —
-        # aksi halde bugüne dek görülen HER cihaz sayılır ve normal cihaz değişimi
-        # (yeni bilgisayar, format vb.) zamanla lisansı kalıcı olarak "aşırı
-        # kullanım" bölgesine iter, hiç geri dönemez (bkz. License.active_device_ids).
-        active_devices = lic.active_device_ids()
-        device_ratio = len(active_devices) / max(lic.max_devices, 1)
-        device_overuse = max(0.0, min(device_ratio - 1.0, 1.0))
+            # NOT: len(lic.known_devices) değil, active_device_ids() kullanılıyor —
+            # aksi halde bugüne dek görülen HER cihaz sayılır ve normal cihaz değişimi
+            # (yeni bilgisayar, format vb.) zamanla lisansı kalıcı olarak "aşırı
+            # kullanım" bölgesine iter, hiç geri dönemez (bkz. License.active_device_ids).
+            active_devices = lic.active_device_ids()
+            device_ratio = len(active_devices) / max(lic.max_devices, 1)
+            device_overuse = max(0.0, min(device_ratio - 1.0, 1.0))
 
-        cutoff = datetime.now() - timedelta(hours=24)
-        recent_usage = [u for u in lic.usage_log if datetime.fromisoformat(u["timestamp"]) > cutoff]
-        limit = self.PLAN_USAGE_LIMITS.get(lic.plan, 100)
-        frequency_ratio = len(recent_usage) / max(limit, 1)
-        frequency_overuse = max(0.0, min(frequency_ratio - 1.0, 1.0))
+            cutoff = datetime.now() - timedelta(hours=24)
+            recent_usage = [u for u in lic.usage_log if datetime.fromisoformat(u["timestamp"]) > cutoff]
+            limit = self.PLAN_USAGE_LIMITS.get(lic.plan, 100)
+            frequency_ratio = len(recent_usage) / max(limit, 1)
+            frequency_overuse = max(0.0, min(frequency_ratio - 1.0, 1.0))
 
-        risk = self.limbic.evaluate({
-            "operational": device_overuse, "financial": frequency_overuse, "reputational": 0.0,
-        })
+            risk = self.limbic.evaluate({
+                "operational": device_overuse, "financial": frequency_overuse, "reputational": 0.0,
+            })
 
-        action_taken = None
-        if risk["risk_level"] == "KRİTİK":
-            self.suspend(license_key, reason=f"Kritik anomali (risk skoru: {risk['risk_score']})")
-            action_taken = "otomatik_askiya_alindi"
-            warnings.append("Cihaz/kullanım anomalisi kritik seviyede — lisans otomatik askıya alındı.")
-        elif risk["risk_level"] in ("YÜKSEK", "ORTA"):
-            warnings.append(f"Şüpheli kullanım paterni tespit edildi (risk: {risk['risk_level']}).")
-            if self.alert_webhook_url:
-                _send_webhook(self.alert_webhook_url, {
-                    "event": "suspicious_usage", "license_key": license_key,
-                    "customer": lic.customer_name, "risk": risk,
-                })
-            action_taken = "uyari_gonderildi"
+            action_taken = None
+            if risk["risk_level"] == "KRİTİK":
+                # suspend() kendi kilidini alır — RLock olduğu için aynı thread'den
+                # yeniden kilitleme sorun değil.
+                self.suspend(license_key, reason=f"Kritik anomali (risk skoru: {risk['risk_score']})")
+                action_taken = "otomatik_askiya_alindi"
+                warnings.append("Cihaz/kullanım anomalisi kritik seviyede — lisans otomatik askıya alındı.")
+            elif risk["risk_level"] in ("YÜKSEK", "ORTA"):
+                warnings.append(f"Şüpheli kullanım paterni tespit edildi (risk: {risk['risk_level']}).")
+                if self.alert_webhook_url:
+                    webhook_payload = {
+                        "event": "suspicious_usage", "license_key": license_key,
+                        "customer": lic.customer_name, "risk": risk,
+                    }
+                action_taken = "uyari_gonderildi"
 
-        if frequency_ratio > 0.8:
-            lic.suggestion = "paket_yukselt"
-            warnings.append("Kullanım yoğunluğunuz plan limitinize yaklaşıyor — üst pakete geçmeyi düşünebilirsiniz.")
-        else:
-            lic.suggestion = None
+            if frequency_ratio > 0.8:
+                lic.suggestion = "paket_yukselt"
+                warnings.append("Kullanım yoğunluğunuz plan limitinize yaklaşıyor — üst pakete geçmeyi düşünebilirsiniz.")
+            else:
+                lic.suggestion = None
 
-        return {
-            "allowed": lic.status in (LicenseStatus.ACTIVE, LicenseStatus.GRACE),
-            "status": lic.status, "risk": risk, "warnings": warnings,
-            "action_taken": action_taken, "suggestion": lic.suggestion,
-        }
+            result = {
+                "allowed": lic.status in (LicenseStatus.ACTIVE, LicenseStatus.GRACE),
+                "status": lic.status, "risk": risk, "warnings": warnings,
+                "action_taken": action_taken, "suggestion": lic.suggestion,
+            }
+
+        if webhook_payload and self.alert_webhook_url:
+            _send_webhook(self.alert_webhook_url, webhook_payload)
+        return result
 
     def deregister_device(self, license_key: str, device_id: str) -> Dict:
         """
@@ -542,13 +681,14 @@ class LicenseManager:
         elden çıkardı). active_device_ids() zaten 30 gün sonra otomatik
         düşürür — bu endpoint sadece anında/manuel düzeltme içindir.
         """
-        lic = self.licenses.get(license_key)
-        if not lic:
-            return {"error": "Lisans bulunamadı"}
-        if device_id in lic.known_devices:
-            del lic.known_devices[device_id]
-            return {"status": "cihaz kaldırıldı", "device_id": device_id}
-        return {"status": "cihaz zaten kayıtlı değildi", "device_id": device_id}
+        with self._lock:
+            lic = self.licenses.get(license_key)
+            if not lic:
+                return {"error": "Lisans bulunamadı"}
+            if device_id in lic.known_devices:
+                del lic.known_devices[device_id]
+                return {"status": "cihaz kaldırıldı", "device_id": device_id}
+            return {"status": "cihaz zaten kayıtlı değildi", "device_id": device_id}
 
     def list_licenses(self) -> List[Dict]:
         return [lic.to_dict() for lic in self.licenses.values()]
@@ -614,8 +754,12 @@ class ProductBrain:
 
         neural_result = None
         if neural_task and neural_input and neural_task in self.neural_networks:
-            outputs = self.neural_networks[neural_task].predict(neural_input)
-            neural_result = {"task_id": neural_task, "prediction": outputs, "confidence": max(outputs)}
+            net = self.neural_networks[neural_task]
+            outputs = net.predict(neural_input)
+            neural_result = {
+                "task_id": neural_task, "prediction": outputs, "confidence": max(outputs),
+                "trained": net.trained_examples > 0,
+            }
 
         decision = self.prefrontal_cortex.decide(reflex, risk, habit, neural_result)
         self.hippocampus.store("decision", {"context": context, "decision": decision},
@@ -648,6 +792,9 @@ class ProductBrain:
                 for rid, r in self.automation_rules.items()
             },
             "licenses": self.license_manager.to_storage(),
+            # Eğitilmiş ağırlıklar da kaydedilmeli — aksi halde her restart'ta
+            # eğitim sıfırlanır ve /neural/train'in hiçbir kalıcı etkisi olmaz.
+            "neural_networks": {tid: net.to_dict() for tid, net in self.neural_networks.items()},
         }
         _atomic_write(path, json.dumps(data, ensure_ascii=False, indent=2))
 
@@ -671,6 +818,9 @@ class ProductBrain:
                 self.automation_rules[rid] = rule
 
             self.license_manager.load_storage(data.get("licenses", {}))
+
+            for tid, net_data in data.get("neural_networks", {}).items():
+                self.neural_networks[tid] = FeedforwardNet.from_dict(net_data)
         except Exception as e:
             logger.error(f"Ürün verisi yüklenemedi [{self.product_id}]: {e}")
 
@@ -760,10 +910,11 @@ app = FastAPI(title="Nova IQ (Nans_Core)", version="1.2.0",
               description="Merkezi karar, otomasyon, lisans ve ödeme/süre takibi servisi")
 
 # Admin panel (farklı bir adresten çalışır) buradan istek atabilsin diye.
-# Production'da allow_origins'i sadece admin panelinizin adresine daraltabilirsiniz.
+# İzinli origin listesi NANS_CORS_ORIGINS ile yapılandırılır (bkz. _load_cors_origins) —
+# ayarlanmazsa "*" (herkese açık) kullanılır.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -834,6 +985,18 @@ class NeuralRegisterRequest(BaseModel):
 class NeuralPredictRequest(BaseModel):
     task_id: str
     inputs: List[float]
+
+
+class NeuralTrainExample(BaseModel):
+    inputs: List[float]
+    targets: List[float]
+
+
+class NeuralTrainRequest(BaseModel):
+    task_id: str
+    examples: List[NeuralTrainExample] = Field(..., min_length=1)
+    epochs: int = Field(default=200, ge=1, le=5000)
+    learning_rate: float = Field(default=0.15, gt=0, le=2.0)
 
 
 class AutomationRuleRequest(BaseModel):
@@ -927,12 +1090,40 @@ def register_neural_task(product_id: str, req: NeuralRegisterRequest, brain: Pro
     return {"status": "kaydedildi", "task_id": req.task_id}
 
 
+@app.post("/v1/{product_id}/neural/train")
+def train_neural_task(product_id: str, req: NeuralTrainRequest, brain: ProductBrain = Depends(require_product_key)):
+    """
+    Etiketli örneklerle (geçmiş kararlar + gerçek sonuçları) ağı eğitir —
+    gerçek geri yayılım/gradyan inişi (bkz. FeedforwardNet.train). Eğitilmemiş
+    bir ağ /neural/predict çağrıldığında rastgele çıktı üretir; bu endpoint
+    çağrılmadan "AI tahmini" güvenilir değildir.
+    """
+    if req.task_id not in brain.neural_networks:
+        raise HTTPException(status_code=404, detail="Görev bulunamadı — önce /neural/register ile kaydedin")
+    net = brain.neural_networks[req.task_id]
+    examples = [(e.inputs, e.targets) for e in req.examples]
+    try:
+        loss = net.train(examples, epochs=req.epochs, lr=req.learning_rate)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    brain.save()
+    return {
+        "task_id": req.task_id, "final_loss": round(loss, 6),
+        "trained_examples_total": net.trained_examples, "epochs": req.epochs,
+    }
+
+
 @app.post("/v1/{product_id}/neural/predict")
 def neural_predict(product_id: str, req: NeuralPredictRequest, brain: ProductBrain = Depends(require_product_key)):
     if req.task_id not in brain.neural_networks:
         raise HTTPException(status_code=404, detail="Görev bulunamadı")
-    outputs = brain.neural_networks[req.task_id].predict(req.inputs)
-    return {"task_id": req.task_id, "prediction": outputs, "confidence": max(outputs)}
+    net = brain.neural_networks[req.task_id]
+    outputs = net.predict(req.inputs)
+    return {
+        "task_id": req.task_id, "prediction": outputs, "confidence": max(outputs),
+        "trained": net.trained_examples > 0,
+        "warning": None if net.trained_examples > 0 else "Bu ağ hiç eğitilmedi — tahmin rastgele ağırlıklardan geliyor, anlamlı değil.",
+    }
 
 
 @app.get("/v1/{product_id}/memory")
@@ -986,13 +1177,17 @@ def product_status(product_id: str, brain: ProductBrain = Depends(require_produc
 
 @app.post("/v1/{product_id}/licenses")
 def create_license(product_id: str, req: LicenseCreateRequest, brain: ProductBrain = Depends(require_product_key)):
-    if req.license_key in brain.license_manager.licenses:
-        raise HTTPException(status_code=409, detail="Bu lisans zaten kayıtlı")
+    # Yinelenen kontrolü artık create_license() içinde, kilit altında yapılıyor —
+    # burada önceden kontrol etmek eşzamanlı iki istekte yarış durumuna açıktı
+    # (ikisi de "yok" görüp ikisi de eklerdi).
     grace = req.grace_days if req.grace_days is not None else brain.default_grace_days
-    lic = brain.license_manager.create_license(
-        req.license_key, req.customer_name, req.plan, req.max_devices,
-        req.expires_at.isoformat() if req.expires_at else None, grace,
-    )
+    try:
+        lic = brain.license_manager.create_license(
+            req.license_key, req.customer_name, req.plan, req.max_devices,
+            req.expires_at.isoformat() if req.expires_at else None, grace,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     brain.save()
     return {"status": "kaydedildi", "license": lic.to_dict()}
 
