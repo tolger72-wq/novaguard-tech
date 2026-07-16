@@ -1,0 +1,9 @@
+DejaVu Fonts (DejaVuSans.ttf, DejaVuSans-Bold.ttf, DejaVuSansMono.ttf)
+
+License: Bitstream Vera / DejaVu license — free for commercial and non-commercial
+use, modification, and redistribution (including embedding in generated PDFs).
+Full text: https://dejavu-fonts.github.io/License.html
+
+Used here because DejaVu Sans has full glyph coverage for Turkish (ş, ğ, ı, İ,
+ö, ü, ç), Georgian (Mkhedruli, U+10D0–U+10FA), and English/Latin in a single
+font file — required for the trilingual draw certificate (bkz. certificate.py).

@@ -1,0 +1,3 @@
+# Nexio entegrasyonu için ek bağımlılıklar
+# Sadece NEXIO_MODE=oracle kullanılacaksa gerekli
+oracledb==2.2.1

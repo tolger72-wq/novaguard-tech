@@ -1,0 +1,96 @@
+═══════════════════════════════════════════════════════════
+  NOVAGUARD PROMO ENGINE — DEMO PAKETİ
+═══════════════════════════════════════════════════════════
+
+Bu klasördeki her şey demo/tanıtım amaçlıdır.
+
+HIZLI BAŞLANGIÇ (backend olmadan, sadece görsel demo):
+─────────────────────────────────────────────────────────
+1. novaguard-admin.html dosyasını çift tıkla → Admin panel açılır
+2. novaguard-display.html dosyasını çift tıkla → Büyük ekran açılır
+   (Bu ekranı ikinci monitöre/TV'ye taşı, tam ekran yap - F11)
+
+Backend'e bağlı olmadan da her iki ekran çalışır — "Demo Modu"
+gösterir, sekmeler gezilebilir, buton animasyonları çalışır.
+
+
+TAM SİSTEMİ ÇALIŞTIRMAK (gerçek veri + otomatik çekiliş):
+─────────────────────────────────────────────────────────
+1. Docker Desktop kurulu olmalı (docker.com/products/docker-desktop)
+2. Terminal aç, novaguard-promo klasörüne gir
+3. Şu komutları çalıştır:
+
+   cp .env.example .env
+   ./quickstart.sh
+
+4. Birkaç dakika sonra sistem hazır olur:
+   - API:        http://localhost:8000
+   - API Docs:   http://localhost:8000/docs
+   - Admin Panel: admin.html dosyasını aç, "Bağlan" butonuna bas
+   - Display:    display/display.html dosyasını aç, "Operatör"
+                 panelinden API adresini gir, Bağlan
+
+5. quickstart.sh otomatik olarak 10 demo oyuncu ve 3 örnek
+   çekiliş yükler — admin panelde hemen görürsün.
+
+
+DOSYA REHBERİ:
+─────────────────────────────────────────────────────────
+novaguard-admin.html      → Yönetici paneli (tek dosya, çift tıkla)
+novaguard-display.html    → Büyük ekran / TV (tek dosya, çift tıkla)
+ornek-sertifika.pdf       → Gerçek bir çekiliş sertifikası örneği
+novaguard-promo/          → Tüm kaynak kod (backend + testler)
+
+  novaguard-promo/README.md         → Teknik dokümantasyon
+  novaguard-promo/quickstart.sh     → Tek komutla kurulum
+  novaguard-promo/branding.json     → Casino logo/isim/renk ayarları
+  novaguard-promo/scripts/          → Casino entegrasyon örnekleri
+  novaguard-promo/tests/            → 38 otomatik test (hepsi geçiyor)
+
+
+SORULARIN İÇİN:
+─────────────────────────────────────────────────────────
+README.md dosyasında API kullanımı, casino entegrasyonu ve
+vergi beyanı akışı detaylı anlatılıyor.
+
+═══════════════════════════════════════════════════════════
+
+═══════════════════════════════════════════════════════════
+  USB / FLASH DİSK İLE TAŞIMA — İNTERNETSİZ ÇALIŞTIRMA
+═══════════════════════════════════════════════════════════
+
+Bu projeyi USB'ye alıp internet olmayan bir bilgisayarda (casino
+sunucusu dahil) çalıştırmak istiyorsan, İKİ AŞAMA var:
+
+AŞAMA 1 — Hazırlık (SADECE BİR KERE, internetli bir bilgisayarda)
+─────────────────────────────────────────────────────────
+1. Docker Desktop'ın kurulu olduğu, internetli bir bilgisayarda
+   novaguard-promo klasörünü aç
+2. Terminal'de şunu çalıştır:
+
+     python3 prepare_offline_package.py
+
+3. Birkaç dakika sürer, "docker-images" adında bir klasör oluşur
+4. TÜM novaguard-promo klasörünü (docker-images dahil) USB'ye kopyala
+
+
+AŞAMA 2 — Çalıştırma (hedef bilgisayarda, İNTERNET GEREKMEZ)
+─────────────────────────────────────────────────────────
+1. USB'den novaguard-promo klasörünü bilgisayara kopyala
+2. O bilgisayarda Docker Desktop kurulu olmalı (bu kurulum da
+   internet ister, ama kurulduktan SONRA NovaGuard'ın kendisi
+   internetsiz çalışır)
+3. Terminal'de klasörün içinde şunu çalıştır:
+
+     python3 load_offline_images.py
+
+4. Sistem otomatik olarak ayağa kalkar — admin.html ve
+   display.html dosyalarını her zamanki gibi açabilirsin
+
+
+ÖZET — NE İNTERNET İSTER, NE İSTEMEZ?
+─────────────────────────────────────────────────────────
+✓ admin.html / display.html / kiosk.html  → HİÇBİR ZAMAN internet istemez
+✓ Docker Desktop kurulumu                  → SADECE İLK kurulumda internet ister
+✓ prepare_offline_package.py               → İNTERNET GEREKİR (sadece 1 kere, hazırlık bilgisayarında)
+✓ load_offline_images.py                   → İNTERNET GEREKMEZ (hedef bilgisayarda)

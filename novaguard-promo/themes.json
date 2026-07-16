@@ -1,0 +1,38 @@
+{
+  "dark_gold": {
+    "primary":    "#d4af37",
+    "secondary":  "#00c8ff",
+    "accent":     "#c41e3a",
+    "background": "#05050a",
+    "bg2":        "#0c0c16",
+    "text":       "#ede5d0",
+    "dim":        "#524a40"
+  },
+  "dark_red": {
+    "primary":    "#e8334a",
+    "secondary":  "#ff9f43",
+    "accent":     "#d4af37",
+    "background": "#0a0508",
+    "bg2":        "#140a0c",
+    "text":       "#f0ddd0",
+    "dim":        "#5a4040"
+  },
+  "dark_blue": {
+    "primary":    "#4fc3f7",
+    "secondary":  "#d4af37",
+    "accent":     "#e8334a",
+    "background": "#040810",
+    "bg2":        "#080f18",
+    "text":       "#d0e8f0",
+    "dim":        "#405060"
+  },
+  "dark_purple": {
+    "primary":    "#c084fc",
+    "secondary":  "#d4af37",
+    "accent":     "#e8334a",
+    "background": "#060408",
+    "bg2":        "#0e080f",
+    "text":       "#ead0f0",
+    "dim":        "#504050"
+  }
+}
