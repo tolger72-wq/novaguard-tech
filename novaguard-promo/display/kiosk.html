@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>NovaGuard — Bilet Kontrol</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Cinzel+Decorative:wght@700;900&display=swap');
+:root{--gold:#d4af37;--gold-l:#f0d060;--red:#c41e3a;--red-l:#e8334a;--cyan:#00c8ff;--green:#22c55e;--bg:#05050a;--bg2:#0e0c14;--text:#ede5d0;--dim:#524a40}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none}
+body{background:var(--bg);color:var(--text);font-family:'Cinzel',serif;min-height:100vh;overflow:hidden;display:flex;flex-direction:column}
+
+/* HEADER */
+#header{padding:20px 24px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(212,175,55,.1)}
+#brand{font-family:'Cinzel Decorative',serif;font-size:14px;letter-spacing:6px;color:var(--gold)}
+.lang-btns{display:flex;gap:6px}
+.lang-btn{background:transparent;border:1px solid rgba(212,175,55,.2);color:rgba(212,175,55,.45);padding:8px 14px;font-family:'Cinzel',serif;font-size:11px;letter-spacing:2px;border-radius:6px}
+.lang-btn.active{background:rgba(212,175,55,.12);border-color:var(--gold);color:var(--gold)}
+
+/* MAIN */
+#main{flex:1;display:flex;align-items:center;justify-content:center;padding:24px}
+
+/* IDLE SCREEN */
+#idle{text-align:center}
+#idle-icon{font-size:80px;margin-bottom:24px;animation:pulse 2.5s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}
+#idle-title{font-family:'Cinzel Decorative',serif;font-size:26px;color:var(--gold);letter-spacing:3px;margin-bottom:14px}
+#idle-sub{font-size:14px;color:var(--dim);letter-spacing:1px;max-width:480px;line-height:1.8}
+
+/* CARD INPUT (manuel giriş — gerçek kart okuyucu yoksa) */
+#card-input-box{margin-top:36px;display:flex;flex-direction:column;align-items:center;gap:14px}
+#card-input{background:var(--bg2);border:2px solid rgba(212,175,55,.3);color:var(--gold);font-family:'Cinzel',serif;font-size:22px;letter-spacing:4px;text-align:center;padding:16px 24px;border-radius:10px;width:320px;outline:none}
+#card-input:focus{border-color:var(--gold)}
+#submit-btn{background:rgba(212,175,55,.12);border:2px solid var(--gold);color:var(--gold);font-family:'Cinzel',serif;font-size:14px;letter-spacing:3px;padding:14px 40px;border-radius:10px;cursor:pointer}
+#submit-btn:active{transform:scale(.97)}
+
+/* RESULT SCREEN */
+#result{display:none;text-align:center;max-width:640px;width:100%}
+#result-name{font-family:'Cinzel Decorative',serif;font-size:34px;color:var(--gold-l);margin-bottom:6px}
+#result-card{font-size:13px;color:var(--dim);letter-spacing:2px;margin-bottom:32px}
+
+#ticket-count{font-size:72px;font-weight:900;color:var(--gold);line-height:1;text-shadow:0 0 30px rgba(212,175,55,.4)}
+#ticket-label{font-size:13px;letter-spacing:3px;color:var(--dim);margin-top:8px;margin-bottom:40px}
+
+/* Tier grid */
+#tier-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:36px}
+.tier-box{padding:16px 8px;border-radius:10px;border:2px solid rgba(212,175,55,.15);background:var(--bg2)}
+.tier-box.eligible{border-color:rgba(34,197,94,.4);background:rgba(34,197,94,.06)}
+.tier-box.excluded{border-color:rgba(196,30,58,.3);background:rgba(196,30,58,.05);opacity:.6}
+.tier-icon{font-size:22px;margin-bottom:8px}
+.tier-name{font-size:10px;letter-spacing:1px;color:var(--dim);margin-bottom:6px}
+.tier-status{font-size:16px;font-weight:700}
+.tier-status.ok{color:var(--green)}
+.tier-status.no{color:var(--red-l)}
+
+#back-btn{background:transparent;border:1px solid rgba(212,175,55,.25);color:var(--dim);font-family:'Cinzel',serif;font-size:12px;letter-spacing:2px;padding:12px 32px;border-radius:8px;cursor:pointer}
+
+/* NOT FOUND */
+#not-found{display:none;text-align:center}
+#nf-icon{font-size:64px;margin-bottom:20px;opacity:.5}
+#nf-text{font-size:16px;color:var(--dim);letter-spacing:1px;margin-bottom:28px}
+
+/* LOADING */
+#loading{display:none;text-align:center}
+.spinner{width:48px;height:48px;border:3px solid rgba(212,175,55,.15);border-top-color:var(--gold);border-radius:50%;margin:0 auto 20px;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* FOOTER */
+#footer{padding:16px;text-align:center;font-size:10px;letter-spacing:2px;color:rgba(82,74,64,.5);border-top:1px solid rgba(212,175,55,.06)}
+
+/* OPERATOR PANEL (gizli, uzun basınca açılır) */
+#op-panel{position:fixed;top:0;right:0;width:300px;height:100vh;background:rgba(8,6,14,.98);border-left:1px solid rgba(212,175,55,.1);z-index:100;padding:20px;display:none;flex-direction:column;gap:12px}
+#op-panel.open{display:flex}
+.op-label{font-size:9px;letter-spacing:2px;color:var(--dim)}
+.op-input{width:100%;background:rgba(20,20,32,.9);border:1px solid rgba(212,175,55,.15);color:var(--text);padding:9px 10px;font-family:monospace;font-size:11px;outline:none;border-radius:5px}
+.op-btn{width:100%;padding:10px;border:none;cursor:pointer;font-family:'Cinzel',serif;font-size:10px;letter-spacing:2px;border-radius:5px;background:rgba(0,200,255,.1);border:1px solid rgba(0,200,255,.3);color:var(--cyan)}
+</style>
+</head>
+<body onclick="handleBodyTap(event)">
+
+<header id="header">
+  <div id="brand">◈ NOVAGUARD</div>
+  <div class="lang-btns">
+    <button class="lang-btn active" data-l="tr" onclick="setLang('tr')">TR</button>
+    <button class="lang-btn" data-l="en" onclick="setLang('en')">EN</button>
+    <button class="lang-btn" data-l="ru" onclick="setLang('ru')">RU</button>
+    <button class="lang-btn" data-l="ka" onclick="setLang('ka')">KA</button>
+  </div>
+</header>
+
+<div id="main">
+
+  <!-- BOŞTA — kart bekleniyor -->
+  <div id="idle">
+    <div id="idle-icon">🎫</div>
+    <div id="idle-title" data-i18n="idleTitle">BİLETLERİNİ GÖR</div>
+    <div id="idle-sub" data-i18n="idleSub">Kartınızı okutun veya kart numaranızı girin.</div>
+    <div id="card-input-box">
+      <input id="card-input" type="text" inputmode="text" data-i18n-placeholder="cardPlaceholder" placeholder="KRT-000" autocomplete="off">
+      <button id="submit-btn" onclick="checkCard()" data-i18n="checkBtn">KONTROL ET</button>
+    </div>
+  </div>
+
+  <!-- YÜKLENİYOR -->
+  <div id="loading">
+    <div class="spinner"></div>
+    <div data-i18n="loadingText">Kontrol ediliyor…</div>
+  </div>
+
+  <!-- SONUÇ -->
+  <div id="result">
+    <div id="result-name">—</div>
+    <div id="result-card">—</div>
+
+    <div id="ticket-count">0</div>
+    <div id="ticket-label" data-i18n="totalTicketsLabel">TOPLAM AKTİF BİLET</div>
+
+    <div id="tier-grid"></div>
+
+    <button id="back-btn" onclick="resetKiosk()" data-i18n="backBtn">◀ GERİ DÖN</button>
+  </div>
+
+  <!-- BULUNAMADI -->
+  <div id="not-found">
+    <div id="nf-icon">✕</div>
+    <div id="nf-text" data-i18n="notFoundText">Kart bulunamadı. Lütfen resepsiyona danışın.</div>
+    <button class="op-btn" style="width:auto;padding:12px 32px" onclick="resetKiosk()" data-i18n="backBtn">◀ GERİ DÖN</button>
+  </div>
+
+</div>
+
+<div id="footer" data-i18n="footerText">NovaGuard Promo Engine — Adil · Şeffaf · Güvenli</div>
+
+<!-- OPERATÖR PANELİ (5 saniye basılı tutarsanız açılır) -->
+<div id="op-panel">
+  <div class="op-label">API ADRESİ</div>
+  <input class="op-input" id="api-url" type="text" value="http://localhost:8000">
+  <button class="op-btn" onclick="saveApiUrl()">KAYDET</button>
+  <button class="op-btn" onclick="document.getElementById('op-panel').classList.remove('open')">KAPAT</button>
+</div>
+
+<script>
+// ── ÇEVİRİLER ────────────────────────────────────────────────────────────────
+const T = {
+  tr:{idleTitle:'BİLETLERİNİ GÖR', idleSub:'Kartınızı okutun veya kart numaranızı girin.',
+      cardPlaceholder:'KRT-000', checkBtn:'KONTROL ET', loadingText:'Kontrol ediliyor…',
+      totalTicketsLabel:'TOPLAM AKTİF BİLET', backBtn:'◀ GERİ DÖN',
+      notFoundText:'Kart bulunamadı. Lütfen resepsiyona danışın.',
+      footerText:'NovaGuard Promo Engine — Adil · Şeffaf · Güvenli',
+      eligible:'UYGUN', excluded:'DIŞINDA',
+      tiers:{daily:'Günlük',weekly:'Haftalık',monthly:'Aylık',quarterly:'3 Aylık',annual:'Final'}},
+  en:{idleTitle:'CHECK YOUR TICKETS', idleSub:'Scan your card or enter your card number.',
+      cardPlaceholder:'KRT-000', checkBtn:'CHECK', loadingText:'Checking…',
+      totalTicketsLabel:'TOTAL ACTIVE TICKETS', backBtn:'◀ BACK',
+      notFoundText:'Card not found. Please contact reception.',
+      footerText:'NovaGuard Promo Engine — Fair · Transparent · Secure',
+      eligible:'ELIGIBLE', excluded:'EXCLUDED',
+      tiers:{daily:'Daily',weekly:'Weekly',monthly:'Monthly',quarterly:'Quarterly',annual:'Final'}},
+  ru:{idleTitle:'ПРОВЕРЬТЕ БИЛЕТЫ', idleSub:'Приложите карту или введите номер карты.',
+      cardPlaceholder:'KRT-000', checkBtn:'ПРОВЕРИТЬ', loadingText:'Проверка…',
+      totalTicketsLabel:'ВСЕГО АКТИВНЫХ БИЛЕТОВ', backBtn:'◀ НАЗАД',
+      notFoundText:'Карта не найдена. Обратитесь на ресепшн.',
+      footerText:'NovaGuard Promo Engine — Честно · Прозрачно · Безопасно',
+      eligible:'УЧАСТВУЕТ', excluded:'ИСКЛЮЧЁН',
+      tiers:{daily:'Ежедневный',weekly:'Еженедельный',monthly:'Ежемесячный',quarterly:'Квартальный',annual:'Финал'}},
+  ka:{idleTitle:'ნახეთ თქვენი ბილეთები', idleSub:'გაატარეთ ბარათი ან შეიყვანეთ ბარათის ნომერი.',
+      cardPlaceholder:'KRT-000', checkBtn:'შემოწმება', loadingText:'მოწმდება…',
+      totalTicketsLabel:'სულ აქტიური ბილეთი', backBtn:'◀ უკან',
+      notFoundText:'ბარათი ვერ მოიძებნა. მიმართეთ რეცეფციას.',
+      footerText:'NovaGuard Promo Engine — სამართლიანი · გამჭვირვალე · უსაფრთხო',
+      eligible:'მონაწილე', excluded:'გამორიცხული',
+      tiers:{daily:'ყოველდღიური',weekly:'ყოველკვირეული',monthly:'ყოველთვიური',quarterly:'კვარტალური',annual:'ფინალი'}},
+};
+
+let lang = 'tr';
+let apiBase = localStorage.getItem('kiosk_api_url') || 'http://localhost:8000';
+document.getElementById('api-url').value = apiBase;
+
+function t(key){ return T[lang][key] || T.tr[key] || key; }
+
+function setLang(l){
+  lang = l;
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.dataset.l===l));
+  document.querySelectorAll('[data-i18n]').forEach(el => el.textContent = t(el.getAttribute('data-i18n')));
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => el.placeholder = t(el.getAttribute('data-i18n-placeholder')));
+}
+
+// ── EKRAN GEÇİŞLERİ ────────────────────────────────────────────────────────
+function showScreen(name){
+  ['idle','loading','result','not-found'].forEach(id=>{
+    document.getElementById(id).style.display = (id===name) ? (id==='idle'?'block':'flex') : 'none';
+  });
+  if(name==='idle'){
+    document.getElementById('idle').style.display = 'block';
+    document.getElementById('card-input').value = '';
+    setTimeout(()=>document.getElementById('card-input').focus(), 100);
+  }
+}
+
+function resetKiosk(){ showScreen('idle'); }
+
+// ── KART KONTROLÜ ────────────────────────────────────────────────────────────
+async function checkCard(){
+  const cardId = document.getElementById('card-input').value.trim();
+  if(!cardId) return;
+
+  showScreen('loading');
+
+  try{
+    const res = await fetch(`${apiBase}/api/v1/display/card/${encodeURIComponent(cardId)}/status`);
+    const data = await res.json();
+
+    if(!data.found){
+      showScreen('not-found');
+      autoResetTimer();
+      return;
+    }
+
+    renderResult(data);
+    showScreen('result');
+    autoResetTimer();
+
+  }catch(e){
+    showScreen('not-found');
+    autoResetTimer();
+  }
+}
+
+function renderResult(data){
+  const elig = data.eligibility || {};
+  const ts = elig.ticket_summary || {};
+  const byTier = elig.eligibility_by_tier || {};
+
+  document.getElementById('result-name').textContent = data.name || data.card_id;
+  document.getElementById('result-card').textContent = data.card_id;
+  document.getElementById('ticket-count').textContent = ts.total_active_tickets ?? 0;
+
+  const tiers = ['daily','weekly','monthly','quarterly','annual'];
+  const icons = {daily:'☀',weekly:'📅',monthly:'🗓',quarterly:'📆',annual:'👑'};
+
+  const grid = document.getElementById('tier-grid');
+  grid.innerHTML = tiers.map(tier=>{
+    const info = byTier[tier];
+    const eligible = info ? info.eligible : true;
+    return `
+      <div class="tier-box ${eligible?'eligible':'excluded'}">
+        <div class="tier-icon">${icons[tier]}</div>
+        <div class="tier-name">${t('tiers')[tier] || tier}</div>
+        <div class="tier-status ${eligible?'ok':'no'}">${eligible?'✓':'✕'}</div>
+      </div>`;
+  }).join('');
+}
+
+// ── OTOMATİK SIFIRLAMA — 15 saniye sonra idle ekrana dön ────────────────────
+let resetTimer = null;
+function autoResetTimer(){
+  if(resetTimer) clearTimeout(resetTimer);
+  resetTimer = setTimeout(resetKiosk, 15000);
+}
+
+// ── KLAVYE / KART OKUYUCU DESTEĞİ ─────────────────────────────────────────────
+// Çoğu kart okuyucu USB klavye gibi davranır: kartı okutunca otomatik yazar + Enter basar
+document.getElementById('card-input').addEventListener('keydown', e=>{
+  if(e.key === 'Enter') checkCard();
+});
+
+// ── OPERATÖR PANELİ — 5 saniye uzun basınca açılır ───────────────────────────
+let pressTimer = null;
+function handleBodyTap(e){
+  // Header'daki dil butonlarına basıldıysa operatör paneli açma
+  if(e.target.closest('.lang-btn') || e.target.closest('#op-panel')) return;
+}
+document.body.addEventListener('mousedown', startPress);
+document.body.addEventListener('touchstart', startPress);
+document.body.addEventListener('mouseup', cancelPress);
+document.body.addEventListener('touchend', cancelPress);
+
+function startPress(e){
+  if(e.target.closest('.lang-btn') || e.target.closest('#op-panel') || e.target.closest('#card-input') || e.target.closest('#submit-btn')) return;
+  pressTimer = setTimeout(()=>{
+    document.getElementById('op-panel').classList.add('open');
+  }, 5000);
+}
+function cancelPress(){ if(pressTimer) clearTimeout(pressTimer); }
+
+function saveApiUrl(){
+  apiBase = document.getElementById('api-url').value.trim().replace(/\/$/,'');
+  localStorage.setItem('kiosk_api_url', apiBase);
+  document.getElementById('op-panel').classList.remove('open');
+}
+
+// ── BAŞLANGIÇ ────────────────────────────────────────────────────────────────
+setLang('tr');
+showScreen('idle');
+</script>
+</body>
+</html>

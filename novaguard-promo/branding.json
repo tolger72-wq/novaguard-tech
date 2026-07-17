@@ -1,0 +1,38 @@
+{
+  "_comment": "Bu dosyayı casino'ya göre doldurun. Kod değişmez, sadece bu dosya değişir.",
+
+  "casino": {
+    "name":    "CASINO ADI",
+    "tagline": "Şans Her An Yanınızda",
+    "city":    "Batumi, Georgia",
+    "logo_url": "",
+    "logo_base64": ""
+  },
+
+  "campaign": {
+    "name":        "BÜYÜK ÇEKİLİŞ KAMPANYASİ",
+    "final_date":  "13 Ocak",
+    "final_label": "Eski Gürcü Yılbaşı"
+  },
+
+  "theme": {
+    "preset": "dark_gold",
+    "_preset_options": ["dark_gold", "dark_red", "dark_blue", "dark_purple", "custom"],
+
+    "custom_colors": {
+      "_note": "Sadece preset='custom' ise kullanılır",
+      "primary":    "#d4af37",
+      "secondary":  "#00c8ff",
+      "background": "#05050a",
+      "text":       "#ede5d0"
+    }
+  },
+
+  "display": {
+    "show_leaderboard":      true,
+    "show_countdown":        true,
+    "lang_auto_rotate":      true,
+    "lang_rotate_interval_sec": 4,
+    "languages":             ["tr", "en", "ru", "ka"]
+  }
+}

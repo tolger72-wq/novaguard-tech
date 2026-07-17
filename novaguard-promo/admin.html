@@ -1,0 +1,1358 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>NovaGuard — Admin Panel</title>
+<style>
+:root{
+  --bg:#0c0c14;--bg2:#141420;--bg3:#1c1c2e;--bg4:#242438;
+  --gold:#d4af37;--gold-l:#f0d060;--gold-d:#8b6d1a;
+  --red:#c41e3a;--red-l:#e8334a;
+  --cyan:#00c8ff;--green:#22c55e;--orange:#f97316;
+  --text:#e8e0d0;--dim:#6a6058;--dim2:#4a4440;
+  --border:rgba(212,175,55,.14);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px}
+a{color:var(--gold);text-decoration:none}
+
+/* LAYOUT */
+.shell{display:grid;grid-template-columns:220px 1fr;grid-template-rows:56px 1fr;min-height:100vh}
+.topbar{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--bg2);border-bottom:1px solid var(--border)}
+.sidebar{background:var(--bg2);border-right:1px solid var(--border);padding:16px 0;display:flex;flex-direction:column;gap:2px}
+.main{padding:28px;overflow-y:auto;display:flex;flex-direction:column;gap:24px}
+
+/* TOPBAR */
+.brand{font-weight:600;letter-spacing:3px;font-size:13px;color:var(--gold)}
+.conn-status{display:flex;align-items:center;gap:8px;font-size:12px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}
+.dot.ok{background:var(--green)}
+.dot.err{background:var(--red-l)}
+
+/* SIDEBAR */
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 20px;cursor:pointer;font-size:13px;color:var(--dim);border-right:2px solid transparent;transition:all .15s}
+.nav-item:hover{color:var(--text);background:rgba(212,175,55,.04)}
+.nav-item.active{color:var(--gold);border-right-color:var(--gold);background:rgba(212,175,55,.06)}
+.nav-icon{font-size:16px;width:20px;text-align:center}
+.nav-sep{height:1px;background:var(--border);margin:8px 16px}
+.nav-label{font-size:11px;letter-spacing:2px;color:var(--dim2);padding:6px 20px}
+
+/* CARDS */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px}
+.card-title{font-size:11px;letter-spacing:2px;color:var(--dim);margin-bottom:16px;text-transform:uppercase}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.stat-card{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:14px 16px}
+.stat-num{font-size:28px;font-weight:600;color:var(--gold);line-height:1}
+.stat-label{font-size:11px;color:var(--dim);margin-top:5px}
+.stat-card.cyan .stat-num{color:var(--cyan)}
+.stat-card.red .stat-num{color:var(--red-l)}
+.stat-card.green .stat-num{color:var(--green)}
+
+/* FORMS */
+.form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:11px;letter-spacing:1px;color:var(--dim)}
+.field input,.field select,.field textarea{background:var(--bg3);border:1px solid var(--dim2);color:var(--text);padding:9px 12px;border-radius:6px;font-size:13px;font-family:inherit;outline:none;transition:border-color .15s}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--gold)}
+.field select option{background:var(--bg3)}
+.field textarea{resize:vertical;min-height:60px}
+.field input[type=number]{-moz-appearance:textfield}
+
+/* BUTTONS */
+.btn{padding:9px 18px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-family:inherit;font-weight:500;transition:all .15s;display:inline-flex;align-items:center;gap:6px}
+.btn-gold{background:rgba(212,175,55,.15);border:1px solid var(--gold-d);color:var(--gold)}
+.btn-gold:hover{background:rgba(212,175,55,.25)}
+.btn-red{background:rgba(196,30,58,.15);border:1px solid var(--red);color:var(--red-l)}
+.btn-red:hover{background:rgba(196,30,58,.28)}
+.btn-cyan{background:rgba(0,200,255,.1);border:1px solid rgba(0,200,255,.3);color:var(--cyan)}
+.btn-cyan:hover{background:rgba(0,200,255,.2)}
+.btn-dim{background:transparent;border:1px solid var(--dim2);color:var(--dim)}
+.btn-dim:hover{border-color:var(--text);color:var(--text)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* TABLES */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:8px 12px;font-size:11px;letter-spacing:1px;color:var(--dim);border-bottom:1px solid var(--border);font-weight:500}
+td{padding:10px 12px;border-bottom:1px solid rgba(212,175,55,.06);vertical-align:middle}
+tr:hover td{background:rgba(212,175,55,.03)}
+tr:last-child td{border-bottom:none}
+
+/* BADGES */
+.badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:500;letter-spacing:.5px}
+.badge-gold{background:rgba(212,175,55,.12);color:var(--gold);border:1px solid rgba(212,175,55,.25)}
+.badge-green{background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.25)}
+.badge-red{background:rgba(196,30,58,.12);color:var(--red-l);border:1px solid rgba(196,30,58,.25)}
+.badge-cyan{background:rgba(0,200,255,.1);color:var(--cyan);border:1px solid rgba(0,200,255,.25)}
+.badge-dim{background:rgba(106,96,88,.12);color:var(--dim);border:1px solid var(--dim2)}
+.badge-orange{background:rgba(249,115,22,.12);color:var(--orange);border:1px solid rgba(249,115,22,.25)}
+
+/* TAB CONTENT */
+.tab{display:none}.tab.active{display:flex;flex-direction:column;gap:20px}
+
+/* TOAST */
+#toast{position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:500;z-index:999;transition:all .25s;opacity:0;pointer-events:none;max-width:360px}
+#toast.show{opacity:1}
+#toast.ok{background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.4);color:var(--green)}
+#toast.err{background:rgba(196,30,58,.15);border:1px solid var(--red);color:var(--red-l)}
+
+/* TIER COLORS */
+.tier-daily    {color:var(--gold)}
+.tier-weekly   {color:var(--cyan)}
+.tier-monthly  {color:#c084fc}
+.tier-quarterly{color:var(--orange)}
+.tier-annual   {color:var(--red-l)}
+
+/* CONFIG BAR */
+.config-bar{display:flex;align-items:center;gap:12px;padding:10px 24px;background:var(--bg3);border-bottom:1px solid var(--border)}
+.config-bar input{flex:1;max-width:320px}
+
+/* FORMULA */
+.formula-group{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;padding:16px;background:var(--bg3);border-radius:6px;border:1px solid var(--border)}
+.formula-section{font-size:11px;letter-spacing:2px;color:var(--dim);margin-bottom:8px}
+
+/* EMPTY STATE */
+.empty{padding:32px;text-align:center;color:var(--dim);font-size:13px}
+
+/* RESPONSIVE */
+@media(max-width:760px){.shell{grid-template-columns:1fr;grid-template-rows:56px auto 1fr}.sidebar{display:flex;flex-direction:row;overflow-x:auto;gap:0;padding:0;border-right:none;border-bottom:1px solid var(--border)}.nav-item{padding:12px 16px;border-right:none;border-bottom:2px solid transparent;white-space:nowrap}.nav-item.active{border-bottom-color:var(--gold);border-right:none}.nav-sep,.nav-label{display:none}.main{padding:16px}}
+.lang-btn{background:transparent;border:1px solid rgba(212,175,55,.18);color:rgba(212,175,55,.4);padding:4px 9px;cursor:pointer;font-family:system-ui,sans-serif;font-size:10px;letter-spacing:1px;transition:all .15s;border-radius:3px}
+.lang-btn.active{background:rgba(212,175,55,.1);border-color:var(--gold);color:var(--gold)}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <div class="brand">◈ NOVAGUARD ADMIN</div>
+  <div style="display:flex;gap:4px">
+    <button class="lang-btn active" data-l="tr" onclick="setAdminLang('tr')">TR</button>
+    <button class="lang-btn" data-l="en" onclick="setAdminLang('en')">EN</button>
+    <button class="lang-btn" data-l="ru" onclick="setAdminLang('ru')">RU</button>
+    <button class="lang-btn" data-l="ka" onclick="setAdminLang('ka')">KA</button>
+  </div>
+  <div class="conn-status">
+    <div class="dot" id="dot"></div>
+    <span id="conn-text" style="color:var(--dim)" data-i18n="notConnected">Bağlantı yok</span>
+  </div>
+</header>
+
+<!-- CONFIG BAR -->
+<div style="grid-column:1/-1" class="config-bar">
+  <span style="font-size:11px;color:var(--dim);white-space:nowrap">API URL</span>
+  <input id="api-url" type="text" value="http://localhost:8000" placeholder="http://localhost:8000" style="background:var(--bg2);border:1px solid var(--dim2);color:var(--text);padding:6px 10px;border-radius:5px;font-size:12px;font-family:monospace">
+  <span style="font-size:11px;color:var(--dim);white-space:nowrap" data-i18n="adminKeyLabel">Admin Key</span>
+  <input id="api-key" type="password" value="casino-admin-key-change-me" placeholder="X-Admin-Key" style="background:var(--bg2);border:1px solid var(--dim2);color:var(--text);padding:6px 10px;border-radius:5px;font-size:12px;font-family:monospace;width:220px">
+  <button class="btn btn-gold" onclick="testConn()" data-i18n="connect">Bağlan</button>
+  <button class="btn btn-dim" onclick="loadAll()"><span data-i18n="refresh">↻ Yenile</span></button>
+</div>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="nav-label" data-i18n="menu">MENÜ</div>
+  <div class="nav-item active" onclick="switchTab('overview')"><span class="nav-icon">◈</span> <span data-i18n="overview">Özet</span></div>
+  <div class="nav-item" onclick="switchTab('draws')"><span class="nav-icon">◉</span> <span data-i18n="draws">Çekilişler</span></div>
+  <div class="nav-item" onclick="switchTab('formula')"><span class="nav-icon">◎</span> <span data-i18n="ticketFormulaShort">Bilet Formülü</span></div>
+  <div class="nav-item" onclick="switchTab('players')"><span class="nav-icon">✦</span> <span data-i18n="players">Oyuncular</span></div>
+  <div class="nav-item" onclick="switchTab('analytics')"><span class="nav-icon">◆</span> <span data-i18n="analytics">Analitik</span></div>
+  <div class="nav-sep"></div>
+  <div class="nav-label" data-i18n="quick">HIZLI</div>
+  <div class="nav-item" onclick="openDocs()"><span class="nav-icon">⎘</span> API Docs</div>
+</aside>
+
+<!-- MAIN -->
+<main class="main">
+
+  <!-- ── OVERVIEW ─────────────────────────────────────── -->
+  <section class="tab active" id="tab-overview">
+    <div class="card">
+      <div class="card-title" data-i18n="campaignSummary">Kampanya Özeti</div>
+      <div class="stat-grid" id="stats-grid">
+        <div class="stat-card"><div class="stat-num" id="s-players">—</div><div class="stat-label" data-i18n="activePlayers">Aktif Oyuncu</div></div>
+        <div class="stat-card cyan"><div class="stat-num" id="s-tickets">—</div><div class="stat-label" data-i18n="activeTickets">Aktif Bilet</div></div>
+        <div class="stat-card green"><div class="stat-num" id="s-wins">—</div><div class="stat-label" data-i18n="totalWins">Toplam Kazanım</div></div>
+        <div class="stat-card"><div class="stat-num tier-daily" id="s-daily">—</div><div class="stat-label" data-i18n="dailyWins">Günlük Kazanım</div></div>
+        <div class="stat-card"><div class="stat-num tier-weekly" id="s-weekly">—</div><div class="stat-label" data-i18n="weeklyWins">Haftalık Kazanım</div></div>
+        <div class="stat-card"><div class="stat-num tier-monthly" id="s-monthly">—</div><div class="stat-label" data-i18n="monthlyWins">Aylık Kazanım</div></div>
+        <div class="stat-card"><div class="stat-num tier-quarterly" id="s-quarterly">—</div><div class="stat-label" data-i18n="quarterlyWins">3 Aylık Kazanım</div></div>
+        <div class="stat-card red"><div class="stat-num tier-annual" id="s-annual">—</div><div class="stat-label" data-i18n="finalWins">Final Kazanım</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title" data-i18n="recentResults">Son Çekiliş Sonuçları</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th data-i18n="winnerCard">Kazanan Kart</th><th data-i18n="tier">Tier</th><th data-i18n="ticket">Bilet</th><th data-i18n="whoDidIt">Kim Yaptı</th><th data-i18n="delivered">Teslim</th><th data-i18n="date">Tarih</th></tr></thead>
+          <tbody id="results-tbody"><tr><td colspan="6" class="empty" data-i18n="loading">Yükleniyor…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── DRAWS ──────────────────────────────────────────── -->
+  <section class="tab" id="tab-draws">
+
+    <div class="card">
+      <div class="card-title" data-i18n="scheduleNew">Yeni Çekiliş Programla</div>
+      <div class="form-grid" id="draw-form">
+        <div class="field">
+          <label data-i18n="drawType">Çekiliş Türü</label>
+          <select id="f-tier">
+            <option value="daily" data-i18n="daily">Günlük</option>
+            <option value="weekly" selected data-i18n="weekly">Haftalık</option>
+            <option value="monthly" data-i18n="monthly">Aylık</option>
+            <option value="quarterly" data-i18n="quarterly">3 Aylık</option>
+            <option value="annual" data-i18n="annualFinal">Yıllık Final</option>
+          </select>
+        </div>
+        <div class="field">
+          <label data-i18n="drawName">Çekiliş Adı</label>
+          <input id="f-name" type="text" placeholder="Haftalık Çekiliş — Hf 23">
+        </div>
+        <div class="field">
+          <label data-i18n="dateTime">Tarih & Saat</label>
+          <input id="f-date" type="datetime-local">
+        </div>
+        <div class="field">
+          <label data-i18n="prizeAmount">Ödül Miktarı</label>
+          <input id="f-amount" type="number" placeholder="5000" min="0">
+        </div>
+        <div class="field">
+          <label data-i18n="currency">Para Birimi</label>
+          <select id="f-currency">
+            <option value="TRY">₺ TRY</option>
+            <option value="EUR">€ EUR</option>
+            <option value="USD">$ USD</option>
+            <option value="GEL">₾ GEL</option>
+            <option value="GBP">£ GBP</option>
+          </select>
+        </div>
+        <div class="field" style="grid-column:span 2">
+          <label data-i18n="prizeDesc">Ödül Açıklaması</label>
+          <input id="f-desc" type="text" placeholder="5,000 TRY Free Play Kredisi">
+        </div>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:10px">
+        <button class="btn btn-gold" onclick="scheduleDrawFn()"><span data-i18n="schedule">+ Programla</span></button>
+        <button class="btn btn-dim" onclick="previewPoolFn()"><span data-i18n="previewPool">⊙ Havuzu Önizle</span></button>
+      </div>
+      <div id="pool-preview" style="margin-top:14px;display:none"></div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div class="card-title" style="margin:0" data-i18n="scheduledDraws">Programlanmış Çekilişler</div>
+        <button class="btn btn-dim" style="font-size:11px" onclick="exportCSV('draws')" data-i18n-title="downloadCSV" title="CSV indir">⬇ CSV</button>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th data-i18n="name">Ad</th><th data-i18n="type">Tür</th><th data-i18n="date">Tarih</th><th data-i18n="prize">Ödül</th><th data-i18n="taxRsge">Vergi (RS.GE)</th><th data-i18n="status">Durum</th><th data-i18n="action">İşlem</th></tr></thead>
+          <tbody id="draws-tbody"><tr><td colspan="7" class="empty" data-i18n="loading">Yükleniyor…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Vergi Beyanı Formu (FIX 7-8) -->
+    <div class="card" id="tax-form-card" style="display:none;border-color:rgba(0,200,255,.3)">
+      <div class="card-title" style="color:var(--cyan)" data-i18n="taxForm">📋 RS.GE Vergi Beyanı</div>
+      <div id="tax-form-draw-name" style="font-size:14px;font-weight:600;margin-bottom:14px;color:var(--text)"></div>
+      <div class="form-grid">
+        <div class="field"><label data-i18n="taxRef">RS.GE Beyan Referans No</label><input id="tax-ref" type="text" placeholder="RS-GE-2025-XXXX-XXXX"></div>
+        <div class="field"><label data-i18n="taxPaid">Yatırılan Vergi Miktarı</label><input id="tax-amount" type="number" placeholder="0.00" step="0.01" min="0"></div>
+        <div class="field"><label data-i18n="taxDeclarer">Beyanı Yapan Yetkili</label><input id="tax-declarer" type="text" placeholder="Muhasebe Yetkilisi Adı"></div>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:10px">
+        <button class="btn btn-cyan" onclick="submitTaxDeclaration()"><span data-i18n="saveTaxDeclaration">✓ Beyanı Kaydet</span></button>
+        <button class="btn btn-dim" onclick="closeTaxForm()"><span data-i18n="close">Kapat</span></button>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ── FORMULA ─────────────────────────────────────────── -->
+  <section class="tab" id="tab-formula">
+    <div class="card">
+      <div class="card-title" data-i18n="ticketFormula">Bilet Kazanım Formülü</div>
+      <p style="font-size:12px;color:var(--dim);margin-bottom:18px" data-i18n="formulaDesc">Live game ve slot için ayrı katsayılar. Tüm değerler casino tarafından belirlenebilir.</p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          <div class="formula-section">🎲 <span data-i18n="liveGame">LİVE GAME</span></div>
+          <div class="formula-group">
+            <div class="field"><label data-i18n="ticketsPerHour">Saatte Bilet</label><input id="live_tph" type="number" step="0.1" placeholder="1.0"></div>
+            <div class="field"><label data-i18n="turnoverPerTicket">Ciro / Bilet</label><input id="live_tur" type="number" placeholder="500"></div>
+            <div class="field"><label data-i18n="minDuration">Min. Süre (dk)</label><input id="live_min" type="number" placeholder="15"></div>
+            <div class="field"><label data-i18n="handsPerHour">Saatte El Sayısı</label><input id="live_rph" type="number" placeholder="30"></div>
+          </div>
+        </div>
+        <div>
+          <div class="formula-section">🎰 <span data-i18n="slot">SLOT</span></div>
+          <div class="formula-group">
+            <div class="field"><label data-i18n="ticketsPerHour">Saatte Bilet</label><input id="slot_tph" type="number" step="0.1" placeholder="0.5"></div>
+            <div class="field"><label data-i18n="turnoverPerTicket">Ciro / Bilet</label><input id="slot_tur" type="number" placeholder="1000"></div>
+            <div class="field"><label data-i18n="minDuration">Min. Süre (dk)</label><input id="slot_min" type="number" placeholder="15"></div>
+            <div class="field"><label data-i18n="spinsPerHour">Saatte Spin Sayısı</label><input id="slot_rph" type="number" placeholder="300"></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px">
+        <div class="formula-section">⚙ <span data-i18n="limitsBonus">LİMİTLER & BONUS</span></div>
+        <div class="formula-group">
+          <div class="field"><label data-i18n="maxDailyTickets">Günlük Maks. Bilet</label><input id="max_day" type="number" placeholder="10"></div>
+          <div class="field"><label data-i18n="maxSessionTickets">Oturum Maks. Bilet</label><input id="max_ses" type="number" placeholder="5"></div>
+          <div class="field"><label data-i18n="consecutiveDaysBonus">Ardışık Gün Bonusu (kaç günde)</label><input id="con_days" type="number" placeholder="3"></div>
+          <div class="field"><label data-i18n="bonusTicketAmount">Bonus Bilet Miktarı</label><input id="con_tick" type="number" placeholder="1"></div>
+          <div class="field"><label data-i18n="poolCap">Havuz Tavan (Küçük Oyuncu Koruması)</label><input id="max_pool" type="number" placeholder="20" title="Bir oyuncunun havuza koyabileceği max bilet sayısı. 0=sınırsız"></div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;display:flex;gap:10px">
+        <button class="btn btn-gold" onclick="saveFormula()"><span data-i18n="save">Kaydet</span></button>
+        <button class="btn btn-dim" onclick="loadFormula()"><span data-i18n="loadBtn">↻ Yükle</span></button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title" data-i18n="exampleCalc">Örnek Hesaplama</div>
+      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div class="field"><label data-i18n="gameType">Oyun Türü</label>
+          <select id="sim-type"><option value="live">Live</option><option value="slot">Slot</option></select>
+        </div>
+        <div class="field"><label data-i18n="duration">Süre (dk)</label><input id="sim-dur" type="number" value="90" style="width:90px"></div>
+        <div class="field"><label data-i18n="turnover">Ciro</label><input id="sim-ciro" type="number" value="2500" style="width:110px"></div>
+        <button class="btn btn-cyan" onclick="simulate()"><span data-i18n="calculate">Hesapla</span></button>
+      </div>
+      <div id="sim-result" style="margin-top:12px;padding:12px;background:var(--bg3);border-radius:6px;display:none">
+        <span style="font-size:20px;font-weight:600;color:var(--gold)" id="sim-num">—</span>
+        <span style="color:var(--dim);font-size:13px" data-i18n="ticketsEarned"> bilet kazanılır</span>
+        <div style="font-size:12px;color:var(--dim);margin-top:4px" id="sim-detail"></div>
+      </div>
+    </div>
+
+    <!-- ── MİNİ BONUS (AKTİF OYUNCU) ─────────────────────────────────────── -->
+    <div class="card" style="border-color:rgba(0,200,255,.25)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div class="card-title" style="margin:0;color:var(--cyan)">🎁 Aktif Oyuncu Mini Bonusu</div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <span style="font-size:11px;color:var(--dim)">Kapalı / Açık</span>
+          <input type="checkbox" id="mb-active" onchange="toggleMiniBonus()" style="width:18px;height:18px">
+        </label>
+      </div>
+      <p style="font-size:12px;color:var(--dim);margin-bottom:16px">
+        Belirlenen saatler arasında, düzenli aralıklarla o an oynayan bir oyuncuya küçük bir hediye verir.
+      </p>
+      <div class="formula-group" style="grid-template-columns:repeat(4,1fr)">
+        <div class="field"><label>Ödül Miktarı (GEL)</label><input id="mb-amount" type="number" placeholder="100" onchange="loadMiniBonusCost()"></div>
+        <div class="field"><label>Kaç Dakikada Bir</label><input id="mb-interval" type="number" placeholder="30" onchange="loadMiniBonusCost()"></div>
+        <div class="field"><label>Başlangıç Saati (0-23)</label><input id="mb-start" type="number" min="0" max="23" placeholder="14" onchange="loadMiniBonusCost()"></div>
+        <div class="field"><label>Bitiş Saati (0-23)</label><input id="mb-end" type="number" min="0" max="23" placeholder="6" onchange="loadMiniBonusCost()"></div>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:10px">
+        <button class="btn btn-gold" onclick="saveMiniBonus()">Kaydet</button>
+        <button class="btn btn-dim" onclick="testMiniBonusNow()">▶ Şimdi Test Et</button>
+      </div>
+      <div id="mb-cost-box" style="margin-top:16px;padding:14px;background:var(--bg3);border-radius:6px;display:none">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;text-align:center">
+          <div><div style="font-size:24px;font-weight:700;color:var(--cyan)" id="mb-draws-per-day">—</div><div style="font-size:10px;color:var(--dim);margin-top:4px">GÜNDE ÇEKİLİŞ</div></div>
+          <div><div style="font-size:24px;font-weight:700;color:var(--gold)" id="mb-daily-cost">—</div><div style="font-size:10px;color:var(--dim);margin-top:4px">GÜNLÜK MALİYET</div></div>
+          <div><div style="font-size:24px;font-weight:700;color:var(--dim)" id="mb-monthly-cost">—</div><div style="font-size:10px;color:var(--dim);margin-top:4px">AYLIK MALİYET (30 gün)</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── PLAYERS ─────────────────────────────────────────── -->
+  <section class="tab" id="tab-players">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div class="card-title" style="margin:0" data-i18n="playerList">Oyuncu Listesi</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-dim" style="font-size:11px" onclick="exportCSV('players')" title="CSV indir">⬇ CSV</button>
+          <input id="p-search" type="text" data-i18n-placeholder="search" placeholder="Ara…" oninput="filterPlayers()" style="background:var(--bg3);border:1px solid var(--dim2);color:var(--text);padding:7px 12px;border-radius:5px;font-size:12px;width:180px">
+          <select id="p-filter" onchange="filterPlayers()" style="background:var(--bg3);border:1px solid var(--dim2);color:var(--text);padding:7px 10px;border-radius:5px;font-size:12px;outline:none">
+            <option value="" data-i18n="all">Tümü</option>
+            <option value="eligible" data-i18n="eligible">Uygun</option>
+            <option value="won" data-i18n="won">Kazandı</option>
+          </select>
+          <button class="btn btn-dim" onclick="loadPlayers()">↻</button>
+        </div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th data-i18n="cardNo">Kart No</th><th data-i18n="playerName">İsim</th><th data-i18n="ticket">Bilet</th><th data-i18n="weekly">Haftalık</th><th data-i18n="monthly">Aylık</th><th data-i18n="quarterly">3 Aylık</th><th data-i18n="finalTier">Final</th><th></th></tr></thead>
+          <tbody id="players-tbody"><tr><td colspan="8" class="empty" data-i18n="loading">Yükleniyor…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── ANALİTİK ────────────────────────────────────────── -->
+  <section class="tab" id="tab-analytics">
+
+    <div class="card">
+      <div class="card-title" data-i18n="systemImpact">Sistem Etkisi — Özet KPI</div>
+      <div id="kpi-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+        <div class="stat-card"><div class="stat-num" id="kpi-retention" style="color:var(--green)">—</div><div class="stat-label">Retention Rate</div><div style="font-size:10px;color:var(--dim);margin-top:2px" data-i18n="retentionDesc">Geçen ay gelenlerin bu ay da gelme oranı</div></div>
+        <div class="stat-card"><div class="stat-num" id="kpi-engagement" style="color:var(--cyan)">—</div><div class="stat-label">Engagement Rate</div><div style="font-size:10px;color:var(--dim);margin-top:2px" data-i18n="engagementDesc">Bilet sahibi oyuncu oranı</div></div>
+        <div class="stat-card"><div class="stat-num" id="kpi-avg-session" style="color:var(--gold)">—</div><div class="stat-label" data-i18n="avgSessionLbl">Ort. Oturum (dk)</div><div style="font-size:10px;color:var(--dim);margin-top:2px" data-i18n="avgSessionDesc">Bu ay ortalama oturum süresi</div></div>
+        <div class="stat-card"><div class="stat-num" id="kpi-daily-sessions" style="color:var(--purple)">—</div><div class="stat-label" data-i18n="dailySessionLbl">Günlük Oturum</div><div style="font-size:10px;color:var(--dim);margin-top:2px" data-i18n="dailySessionDesc">Bu hafta günlük ortalama</div></div>
+      </div>
+    </div>
+
+    <div class="row2">
+      <!-- Katılan vs Katılmayan -->
+      <div class="card">
+        <div class="card-title" data-i18n="engagedVsNot">Sistem Etkisi — Katılan vs Katılmayan</div>
+        <div id="comparison-box" style="font-size:13px;color:var(--dim)" data-i18n="loading">Yükleniyor…</div>
+      </div>
+
+      <!-- Retention yorumu -->
+      <div class="card">
+        <div class="card-title" data-i18n="retentionComment">Retention Yorumu</div>
+        <div id="retention-box" style="font-size:13px;color:var(--dim)" data-i18n="loading">Yükleniyor…</div>
+      </div>
+    </div>
+
+    <!-- Haftalık trend -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div class="card-title" style="margin:0" data-i18n="weeklyTrend">Haftalık Trend — Son 12 Hafta</div>
+        <button class="btn btn-dim" style="font-size:11px" onclick="loadAnalytics()">↻</button>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th data-i18n="week">Hafta</th><th data-i18n="uniquePlayers">Unique Oyuncu</th><th data-i18n="totalSessions">Toplam Oturum</th><th data-i18n="visitsPerPlayer">Oyuncu Başı Ziyaret</th><th data-i18n="avgDurMin">Ort. Süre (dk)</th></tr></thead>
+          <tbody id="trend-tbody"><tr><td colspan="5" class="empty" data-i18n="loading">Yükleniyor…</td></tr></tbody>
+        </table>
+      </div>
+      <!-- Mini bar chart -->
+      <div id="trend-chart" style="margin-top:16px;display:flex;align-items:flex-end;gap:3px;height:80px"></div>
+      <div style="font-size:10px;color:var(--dim);margin-top:4px;text-align:center" data-i18n="weeklyUniqueCaption">Haftalık unique oyuncu sayısı</div>
+    </div>
+
+  </section>
+
+</main>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+// card_id/isim gibi alanlar casino'nun CRM'inden geliyor — kendi kontrolümüzde değil.
+// innerHTML'e basmadan önce mutlaka kaçışlanmalı (stored XSS koruması).
+function escapeHtml(v){
+  return String(v ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  }[c]));
+}
+let _formula = {};
+let _players = [];
+
+// ── ADMIN PANEL TRANSLATIONS — KAPSAMLI SÖZLÜK ─────────────────────────────────
+const ADMIN_T = {
+  tr:{
+    menu:'MENÜ', quick:'HIZLI', overview:'Özet', draws:'Çekilişler',
+    ticketFormulaShort:'Bilet Formülü', players:'Oyuncular', analytics:'Analitik',
+    notConnected:'Bağlantı yok', adminKeyLabel:'Admin Key', connect:'Bağlan', refresh:'↻ Yenile',
+    connected:'Bağlı', connFailed:'Bağlanamadı', connSuccess:'Bağlantı başarılı', connError:'Bağlantı hatası',
+    campaignSummary:'Kampanya Özeti', activePlayers:'Aktif Oyuncu', activeTickets:'Aktif Bilet',
+    totalWins:'Toplam Kazanım', dailyWins:'Günlük Kazanım', weeklyWins:'Haftalık Kazanım',
+    monthlyWins:'Aylık Kazanım', quarterlyWins:'3 Aylık Kazanım', finalWins:'Final Kazanım',
+    recentResults:'Son Çekiliş Sonuçları', winnerCard:'Kazanan Kart', tier:'Tier', ticket:'Bilet',
+    whoDidIt:'Kim Yaptı', delivered:'Teslim', date:'Tarih', loading:'Yükleniyor…',
+    scheduleNew:'Yeni Çekiliş Programla', drawType:'Çekiliş Türü', drawName:'Çekiliş Adı',
+    dateTime:'Tarih & Saat', prizeAmount:'Ödül Miktarı', currency:'Para Birimi', prizeDesc:'Ödül Açıklaması',
+    daily:'Günlük', weekly:'Haftalık', monthly:'Aylık', quarterly:'3 Aylık', annualFinal:'Yıllık Final',
+    schedule:'+ Programla', previewPool:'⊙ Havuzu Önizle', scheduledDraws:'Programlanmış Çekilişler',
+    downloadCSV:'CSV indir', name:'Ad', type:'Tür', prize:'Ödül', taxRsge:'Vergi (RS.GE)',
+    status:'Durum', action:'İşlem',
+    taxForm:'📋 RS.GE Vergi Beyanı', taxRef:'RS.GE Beyan Referans No', taxPaid:'Yatırılan Vergi Miktarı',
+    taxDeclarer:'Beyanı Yapan Yetkili', saveTaxDeclaration:'✓ Beyanı Kaydet', close:'Kapat',
+    taxOk:'Beyan tamam', taxPending:'Beyan bekleniyor', taxNotNeeded:'Gerekmiyor',
+    dryRunTitle:'Kuru Tatbikat — Sonuç Kaydedilmez', execute:'▶ Çek',
+    ticketFormula:'Bilet Kazanım Formülü',
+    formulaDesc:'Live game ve slot için ayrı katsayılar. Tüm değerler casino tarafından belirlenebilir.',
+    liveGame:'LİVE GAME', slot:'SLOT', ticketsPerHour:'Saatte Bilet', turnoverPerTicket:'Ciro / Bilet',
+    minDuration:'Min. Süre (dk)', handsPerHour:'Saatte El Sayısı', spinsPerHour:'Saatte Spin Sayısı',
+    limitsBonus:'LİMİTLER & BONUS', maxDailyTickets:'Günlük Maks. Bilet', maxSessionTickets:'Oturum Maks. Bilet',
+    consecutiveDaysBonus:'Ardışık Gün Bonusu (kaç günde)', bonusTicketAmount:'Bonus Bilet Miktarı',
+    poolCap:'Havuz Tavan (Küçük Oyuncu Koruması)', save:'Kaydet', loadBtn:'↻ Yükle',
+    exampleCalc:'Örnek Hesaplama', gameType:'Oyun Türü', duration:'Süre (dk)', turnover:'Ciro',
+    calculate:'Hesapla', ticketsEarned:' bilet kazanılır',
+    playerList:'Oyuncu Listesi', search:'Ara…', all:'Tümü', eligible:'Uygun', won:'Kazandı', detail:'Detay',
+    csvDownloading:'CSV indiriliyor…',
+    cardNo:'Kart No', playerName:'İsim', finalTier:'Final',
+    systemImpact:'Sistem Etkisi — Özet KPI', retentionDesc:'Geçen ay gelenlerin bu ay da gelme oranı',
+    engagementDesc:'Bilet sahibi oyuncu oranı', avgSessionLbl:'Ort. Oturum (dk)',
+    avgSessionDesc:'Bu ay ortalama oturum süresi', dailySessionLbl:'Günlük Oturum',
+    dailySessionDesc:'Bu hafta günlük ortalama', engagedVsNot:'Sistem Etkisi — Katılan vs Katılmayan',
+    retentionComment:'Retention Yorumu', weeklyTrend:'Haftalık Trend — Son 12 Hafta',
+    week:'Hafta', uniquePlayers:'Unique Oyuncu', totalSessions:'Toplam Oturum',
+    visitsPerPlayer:'Oyuncu Başı Ziyaret', avgDurMin:'Ort. Süre (dk)',
+    weeklyUniqueCaption:'Haftalık unique oyuncu sayısı',
+    noResultsYet:'Henüz çekiliş yapılmadı', noScheduledDraws:'Programlanmış çekiliş yok',
+    noPlayersFound:'Oyuncu bulunamadı', summaryLoadError:'Özet yüklenemedi',
+    drawsLoadError:'Çekilişler yüklenemedi', cancelledMsg:'İptal edildi',
+    cancelError:'İptal hatası', selectDrawFirst:'Çekiliş seçilmedi',
+    fillAllFields:'Tüm alanları doldurun', taxSavedMsg:'✓ Vergi beyanı kaydedildi (bilgi amaçlı kayıt).',
+    confirmCancelDraw:'çekilişini iptal et?', certOpening:'Sertifika yeni sekmede açılıyor…',
+    emailLabel:'Mail', certEmailPrompt:'E-posta adresi (boş bırakılırsa oyuncunun kayıtlı adresi kullanılır):',
+    certEmailSentMsg:'Sertifika e-posta ile gönderildi', certEmailError:'Mail gönderilemedi',
+    confirmDryRun:'için KURU TATBİKAT yap?', dryRunNote:'Sonuç kaydedilmez — sadece ekranda gösterilir.',
+    dryRunNoPlayers:'Uygun oyuncu yok', dryRunPrefix:'🎯 TATBİKAT — Kazanan:', dryRunSuffix:'bilet · Sonuç kaydedilmedi',
+    dryRunError:'Tatbikat hatası', enterPrizeAmount:'Ödül miktarı giriniz',
+    drawScheduledMsg:'Çekiliş programlandı ✓', previewLabel:'Önizleme',
+    confirmExecuteDraw:'çekilişini yürüt? Bu işlem geri alınamaz.', drawError:'Çekiliş hatası',
+    prizeNoteLabel:'Ödül teslim notu (opsiyonel):', prizeDeliveredMsg:'✓ Ödül teslim edildi olarak işaretlendi',
+    formulaLoadedMsg:'Formül yüklendi', formulaLoadError:'Formül yüklenemedi',
+    formulaSavedMsg:'Formül kaydedildi ✓', formulaSaveError:'Kayıt hatası',
+    loadFormulaFirst:'Önce formülü yükleyin', minDurationMsg:'Minimum süre',
+    calcFromDuration:'Süreden', calcFromTurnover:'Cirodan', calcLimited:'Sınırlandırıldı',
+    playersLoadError:'Oyuncular yüklenemedi',
+    alertActiveTickets:'Aktif Bilet', alertToday:'Bugün', alertConsecutiveDays:'Ardışık Gün',
+    alertYearWins:'Bu Yılki Kazanımlar', alertNoWins:'(Kazanım yok)',
+    statusScheduled:'Planlandı', statusInProgress:'Devam Ediyor', statusCompleted:'Tamamlandı', statusCancelled:'İptal',
+    excludedLabel:'Dışlandı', thisPeriod:'bu dönem', analyticsLoadError:'Analitik yüklenemedi',
+    lastMonthLabel:'Geçen ay', returnedThisMonthLabel:'Bu ay geri dönen', playerWord:'oyuncu',
+    salesLineIntro:'Müşteriye söyleyeceğin cümle:',
+    salesLineTemplate:(a,b)=>`"Geçen ay gelen ${a} oyuncunun %${b}'i bu ay da geldi."`,
+    participatingLabel:'ÇEKİLİŞE KATILAN', notParticipatingLabel:'KATILMAYAN',
+    avgVisitLabel:'Hf. ziyaret', avgDurationLabel:'Ort. süre',
+    visitFreqLabel:'Ziyaret sıklığı', sessionDurLabel:'Oturum süresi',
+    effectQuoteTemplate:(v,s)=>`"Çekilişe katılan oyuncular %${v} daha sık geliyor ve %${s} daha uzun kalıyor."`,
+    moreLabel:'daha', eligiblePlayerLabel:'Uygun Oyuncu', totalTicketLabel:'Toplam Bilet',
+    minutesShort:'dk',
+    tierLabels:{daily:'Günlük',weekly:'Haftalık',monthly:'Aylık',quarterly:'3 Aylık',annual:'Yıllık Final'},
+  },
+  en:{
+    menu:'MENU', quick:'QUICK', overview:'Overview', draws:'Draws',
+    ticketFormulaShort:'Ticket Formula', players:'Players', analytics:'Analytics',
+    notConnected:'Not connected', adminKeyLabel:'Admin Key', connect:'Connect', refresh:'↻ Refresh',
+    connected:'Connected', connFailed:'Connection failed', connSuccess:'Connected successfully', connError:'Connection error',
+    campaignSummary:'Campaign Summary', activePlayers:'Active Players', activeTickets:'Active Tickets',
+    totalWins:'Total Wins', dailyWins:'Daily Wins', weeklyWins:'Weekly Wins',
+    monthlyWins:'Monthly Wins', quarterlyWins:'Quarterly Wins', finalWins:'Final Wins',
+    recentResults:'Recent Draw Results', winnerCard:'Winner Card', tier:'Tier', ticket:'Ticket',
+    whoDidIt:'Executed By', delivered:'Delivered', date:'Date', loading:'Loading…',
+    scheduleNew:'Schedule New Draw', drawType:'Draw Type', drawName:'Draw Name',
+    dateTime:'Date & Time', prizeAmount:'Prize Amount', currency:'Currency', prizeDesc:'Prize Description',
+    daily:'Daily', weekly:'Weekly', monthly:'Monthly', quarterly:'Quarterly', annualFinal:'Annual Final',
+    schedule:'+ Schedule', previewPool:'⊙ Preview Pool', scheduledDraws:'Scheduled Draws',
+    downloadCSV:'Download CSV', name:'Name', type:'Type', prize:'Prize', taxRsge:'Tax (RS.GE)',
+    status:'Status', action:'Action',
+    taxForm:'📋 RS.GE Tax Declaration', taxRef:'RS.GE Declaration Reference No', taxPaid:'Tax Amount Paid',
+    taxDeclarer:'Declared By', saveTaxDeclaration:'✓ Save Declaration', close:'Close',
+    taxOk:'Declared', taxPending:'Declaration pending', taxNotNeeded:'Not required',
+    dryRunTitle:'Dry Run — Result Not Saved', execute:'▶ Draw',
+    ticketFormula:'Ticket Earning Formula',
+    formulaDesc:'Separate coefficients for live game and slot. All values can be set by the casino.',
+    liveGame:'LIVE GAME', slot:'SLOT', ticketsPerHour:'Tickets Per Hour', turnoverPerTicket:'Turnover / Ticket',
+    minDuration:'Min. Duration (min)', handsPerHour:'Hands Per Hour', spinsPerHour:'Spins Per Hour',
+    limitsBonus:'LIMITS & BONUS', maxDailyTickets:'Max Daily Tickets', maxSessionTickets:'Max Session Tickets',
+    consecutiveDaysBonus:'Consecutive Day Bonus (days)', bonusTicketAmount:'Bonus Ticket Amount',
+    poolCap:'Pool Cap (Small Player Protection)', save:'Save', loadBtn:'↻ Load',
+    exampleCalc:'Example Calculation', gameType:'Game Type', duration:'Duration (min)', turnover:'Turnover',
+    calculate:'Calculate', ticketsEarned:' tickets earned',
+    playerList:'Player List', search:'Search…', all:'All', eligible:'Eligible', won:'Won', detail:'Detail',
+    csvDownloading:'Downloading CSV…',
+    cardNo:'Card No', playerName:'Name', finalTier:'Final',
+    systemImpact:'System Impact — KPI Summary', retentionDesc:"Rate of last month's players returning this month",
+    engagementDesc:'Ratio of players with tickets', avgSessionLbl:'Avg. Session (min)',
+    avgSessionDesc:'Average session duration this month', dailySessionLbl:'Daily Sessions',
+    dailySessionDesc:'Daily average this week', engagedVsNot:'System Impact — Engaged vs Non-Engaged',
+    retentionComment:'Retention Insight', weeklyTrend:'Weekly Trend — Last 12 Weeks',
+    week:'Week', uniquePlayers:'Unique Players', totalSessions:'Total Sessions',
+    visitsPerPlayer:'Visits Per Player', avgDurMin:'Avg. Duration (min)',
+    weeklyUniqueCaption:'Weekly unique player count',
+    noResultsYet:'No draws yet', noScheduledDraws:'No scheduled draws',
+    noPlayersFound:'No players found', summaryLoadError:'Failed to load summary',
+    drawsLoadError:'Failed to load draws', cancelledMsg:'Cancelled',
+    cancelError:'Cancel error', selectDrawFirst:'No draw selected',
+    fillAllFields:'Fill in all fields', taxSavedMsg:'✓ Tax declaration saved (informational record).',
+    confirmCancelDraw:'Cancel this draw?', certOpening:'Opening certificate in new tab…',
+    emailLabel:'Email', certEmailPrompt:'Email address (leave blank to use the stored player email):',
+    certEmailSentMsg:'Certificate sent by email', certEmailError:'Failed to send email',
+    confirmDryRun:'Run DRY RUN for', dryRunNote:'Result will not be saved — display only.',
+    dryRunNoPlayers:'No eligible players', dryRunPrefix:'🎯 DRY RUN — Winner:', dryRunSuffix:'tickets · Result not saved',
+    dryRunError:'Dry run error', enterPrizeAmount:'Enter prize amount',
+    drawScheduledMsg:'Draw scheduled ✓', previewLabel:'Preview',
+    confirmExecuteDraw:'Execute this draw? This cannot be undone.', drawError:'Draw error',
+    prizeNoteLabel:'Prize delivery note (optional):', prizeDeliveredMsg:'✓ Prize marked as delivered',
+    formulaLoadedMsg:'Formula loaded', formulaLoadError:'Failed to load formula',
+    formulaSavedMsg:'Formula saved ✓', formulaSaveError:'Save error',
+    loadFormulaFirst:'Load the formula first', minDurationMsg:'Minimum duration',
+    calcFromDuration:'From duration', calcFromTurnover:'From turnover', calcLimited:'Capped at',
+    playersLoadError:'Failed to load players',
+    alertActiveTickets:'Active Tickets', alertToday:'Today', alertConsecutiveDays:'Consecutive Days',
+    alertYearWins:"This Year's Wins", alertNoWins:'(No wins)',
+    statusScheduled:'Scheduled', statusInProgress:'In Progress', statusCompleted:'Completed', statusCancelled:'Cancelled',
+    excludedLabel:'Excluded', thisPeriod:'this period', analyticsLoadError:'Failed to load analytics',
+    lastMonthLabel:'Last month', returnedThisMonthLabel:'Returned this month', playerWord:'players',
+    salesLineIntro:'What to tell the client:',
+    salesLineTemplate:(a,b)=>`"Of the ${a} players who came last month, ${b}% returned this month."`,
+    participatingLabel:'DRAW PARTICIPANTS', notParticipatingLabel:'NON-PARTICIPANTS',
+    avgVisitLabel:'Weekly visits', avgDurationLabel:'Avg. duration',
+    visitFreqLabel:'Visit frequency', sessionDurLabel:'Session duration',
+    effectQuoteTemplate:(v,s)=>`"Players who participate in draws visit ${v}% more often and stay ${s}% longer."`,
+    moreLabel:'more', eligiblePlayerLabel:'Eligible Players', totalTicketLabel:'Total Tickets',
+    minutesShort:'min',
+    tierLabels:{daily:'Daily',weekly:'Weekly',monthly:'Monthly',quarterly:'Quarterly',annual:'Annual Final'},
+  },
+  ru:{
+    menu:'МЕНЮ', quick:'БЫСТРО', overview:'Обзор', draws:'Розыгрыши',
+    ticketFormulaShort:'Формула билетов', players:'Игроки', analytics:'Аналитика',
+    notConnected:'Нет соединения', adminKeyLabel:'Admin Key', connect:'Подключить', refresh:'↻ Обновить',
+    connected:'Подключено', connFailed:'Не удалось подключиться', connSuccess:'Успешно подключено', connError:'Ошибка соединения',
+    campaignSummary:'Обзор Кампании', activePlayers:'Активные Игроки', activeTickets:'Активные Билеты',
+    totalWins:'Всего Выигрышей', dailyWins:'Ежедневные Выигрыши', weeklyWins:'Еженедельные Выигрыши',
+    monthlyWins:'Ежемесячные Выигрыши', quarterlyWins:'Квартальные Выигрыши', finalWins:'Финальные Выигрыши',
+    recentResults:'Последние Результаты', winnerCard:'Карта Победителя', tier:'Уровень', ticket:'Билет',
+    whoDidIt:'Кто Провёл', delivered:'Выдано', date:'Дата', loading:'Загрузка…',
+    scheduleNew:'Запланировать Розыгрыш', drawType:'Тип Розыгрыша', drawName:'Название',
+    dateTime:'Дата и Время', prizeAmount:'Сумма Приза', currency:'Валюта', prizeDesc:'Описание Приза',
+    daily:'Ежедневный', weekly:'Еженедельный', monthly:'Ежемесячный', quarterly:'Квартальный', annualFinal:'Годовой Финал',
+    schedule:'+ Запланировать', previewPool:'⊙ Просмотр Пула', scheduledDraws:'Запланированные Розыгрыши',
+    downloadCSV:'Скачать CSV', name:'Название', type:'Тип', prize:'Приз', taxRsge:'Налог (RS.GE)',
+    status:'Статус', action:'Действие',
+    taxForm:'📋 Налоговая Декларация RS.GE', taxRef:'Номер Декларации RS.GE', taxPaid:'Уплаченный Налог',
+    taxDeclarer:'Декларант', saveTaxDeclaration:'✓ Сохранить', close:'Закрыть',
+    taxOk:'Задекларировано', taxPending:'Ожидает декларации', taxNotNeeded:'Не требуется',
+    dryRunTitle:'Тестовый Запуск — Результат не сохраняется', execute:'▶ Розыгрыш',
+    ticketFormula:'Формула Начисления Билетов',
+    formulaDesc:'Отдельные коэффициенты для live-игр и слотов. Все значения задаются казино.',
+    liveGame:'LIVE ИГРЫ', slot:'СЛОТЫ', ticketsPerHour:'Билетов в Час', turnoverPerTicket:'Оборот / Билет',
+    minDuration:'Мин. Длительность (мин)', handsPerHour:'Раздач в Час', spinsPerHour:'Спинов в Час',
+    limitsBonus:'ЛИМИТЫ И БОНУСЫ', maxDailyTickets:'Макс. Билетов в День', maxSessionTickets:'Макс. Билетов за Сессию',
+    consecutiveDaysBonus:'Бонус за Дни Подряд', bonusTicketAmount:'Кол-во Бонусных Билетов',
+    poolCap:'Лимит Пула (Защита Малых Игроков)', save:'Сохранить', loadBtn:'↻ Загрузить',
+    exampleCalc:'Пример Расчёта', gameType:'Тип Игры', duration:'Длительность (мин)', turnover:'Оборот',
+    calculate:'Рассчитать', ticketsEarned:' билетов начислено',
+    playerList:'Список Игроков', search:'Поиск…', all:'Все', eligible:'Участвует', won:'Выиграл', detail:'Детали',
+    csvDownloading:'Загрузка CSV…',
+    cardNo:'Номер Карты', playerName:'Имя', finalTier:'Финал',
+    systemImpact:'Влияние Системы — KPI', retentionDesc:'Доля игроков прошлого месяца, вернувшихся в этом',
+    engagementDesc:'Доля игроков с билетами', avgSessionLbl:'Ср. Сессия (мин)',
+    avgSessionDesc:'Средняя длительность сессии в этом месяце', dailySessionLbl:'Сессий в День',
+    dailySessionDesc:'Среднее за эту неделю', engagedVsNot:'Влияние Системы — Участники vs Остальные',
+    retentionComment:'Анализ Удержания', weeklyTrend:'Недельный Тренд — 12 Недель',
+    week:'Неделя', uniquePlayers:'Уник. Игроков', totalSessions:'Всего Сессий',
+    visitsPerPlayer:'Визитов на Игрока', avgDurMin:'Ср. Длительность (мин)',
+    weeklyUniqueCaption:'Количество уникальных игроков по неделям',
+    noResultsYet:'Розыгрышей ещё не было', noScheduledDraws:'Нет запланированных розыгрышей',
+    noPlayersFound:'Игроки не найдены', summaryLoadError:'Не удалось загрузить сводку',
+    drawsLoadError:'Не удалось загрузить розыгрыши', cancelledMsg:'Отменено',
+    cancelError:'Ошибка отмены', selectDrawFirst:'Розыгрыш не выбран',
+    fillAllFields:'Заполните все поля', taxSavedMsg:'✓ Налоговая декларация сохранена (информационная запись).',
+    confirmCancelDraw:'Отменить этот розыгрыш?', certOpening:'Открытие сертификата в новой вкладке…',
+    emailLabel:'Почта', certEmailPrompt:'Адрес e-mail (оставьте пустым, чтобы использовать сохранённый адрес игрока):',
+    certEmailSentMsg:'Сертификат отправлен по почте', certEmailError:'Не удалось отправить письмо',
+    confirmDryRun:'Выполнить ТЕСТ для', dryRunNote:'Результат не будет сохранён — только отображение.',
+    dryRunNoPlayers:'Нет подходящих игроков', dryRunPrefix:'🎯 ТЕСТ — Победитель:', dryRunSuffix:'билетов · Результат не сохранён',
+    dryRunError:'Ошибка теста', enterPrizeAmount:'Введите сумму приза',
+    drawScheduledMsg:'Розыгрыш запланирован ✓', previewLabel:'Предпросмотр',
+    confirmExecuteDraw:'Провести розыгрыш? Это действие необратимо.', drawError:'Ошибка розыгрыша',
+    prizeNoteLabel:'Примечание к выдаче приза (необязательно):', prizeDeliveredMsg:'✓ Приз отмечен как выданный',
+    formulaLoadedMsg:'Формула загружена', formulaLoadError:'Не удалось загрузить формулу',
+    formulaSavedMsg:'Формула сохранена ✓', formulaSaveError:'Ошибка сохранения',
+    loadFormulaFirst:'Сначала загрузите формулу', minDurationMsg:'Минимальная длительность',
+    calcFromDuration:'По времени', calcFromTurnover:'По обороту', calcLimited:'Ограничено до',
+    playersLoadError:'Не удалось загрузить игроков',
+    alertActiveTickets:'Активные Билеты', alertToday:'Сегодня', alertConsecutiveDays:'Дней Подряд',
+    alertYearWins:'Выигрыши в Этом Году', alertNoWins:'(Нет выигрышей)',
+    statusScheduled:'Запланировано', statusInProgress:'В Процессе', statusCompleted:'Завершено', statusCancelled:'Отменено',
+    excludedLabel:'Исключён', thisPeriod:'этот период', analyticsLoadError:'Не удалось загрузить аналитику',
+    lastMonthLabel:'В прошлом месяце', returnedThisMonthLabel:'Вернулись в этом месяце', playerWord:'игроков',
+    salesLineIntro:'Что сказать клиенту:',
+    salesLineTemplate:(a,b)=>`"Из ${a} игроков прошлого месяца ${b}% вернулись в этом месяце."`,
+    participatingLabel:'УЧАСТНИКИ РОЗЫГРЫША', notParticipatingLabel:'НЕ УЧАСТВУЮТ',
+    avgVisitLabel:'Визитов в нед.', avgDurationLabel:'Ср. длительность',
+    visitFreqLabel:'Частота визитов', sessionDurLabel:'Длительность сессии',
+    effectQuoteTemplate:(v,s)=>`"Игроки, участвующие в розыгрышах, посещают на ${v}% чаще и остаются на ${s}% дольше."`,
+    moreLabel:'ещё', eligiblePlayerLabel:'Подходящих Игроков', totalTicketLabel:'Всего Билетов',
+    minutesShort:'мин',
+    tierLabels:{daily:'Ежедневный',weekly:'Еженедельный',monthly:'Ежемесячный',quarterly:'Квартальный',annual:'Гранд-финал'},
+  },
+  ka:{
+    menu:'მენიუ', quick:'სწრაფი', overview:'მიმოხილვა', draws:'გათამაშება',
+    ticketFormulaShort:'ბილეთის ფორმულა', players:'მოთამაშეები', analytics:'ანალიტიკა',
+    notConnected:'კავშირი არ არის', adminKeyLabel:'Admin Key', connect:'დაკავშირება', refresh:'↻ განახლება',
+    connected:'დაკავშირებულია', connFailed:'დაკავშირება ვერ მოხერხდა', connSuccess:'წარმატებით დაკავშირდა', connError:'კავშირის შეცდომა',
+    campaignSummary:'კამპანიის მიმოხილვა', activePlayers:'აქტიური მოთამაშე', activeTickets:'აქტიური ბილეთი',
+    totalWins:'სულ მოგება', dailyWins:'ყოველდღიური მოგება', weeklyWins:'ყოველკვირეული მოგება',
+    monthlyWins:'ყოველთვიური მოგება', quarterlyWins:'კვარტალური მოგება', finalWins:'ფინალის მოგება',
+    recentResults:'ბოლო შედეგები', winnerCard:'გამარჯვებულის ბარათი', tier:'დონე', ticket:'ბილეთი',
+    whoDidIt:'შემსრულებელი', delivered:'გადაცემულია', date:'თარიღი', loading:'იტვირთება…',
+    scheduleNew:'ახალი გათამაშების დაგეგმვა', drawType:'გათამაშების ტიპი', drawName:'გათამაშების სახელი',
+    dateTime:'თარიღი და დრო', prizeAmount:'პრიზის ოდენობა', currency:'ვალუტა', prizeDesc:'პრიზის აღწერა',
+    daily:'ყოველდღიური', weekly:'ყოველკვირეული', monthly:'ყოველთვიური', quarterly:'კვარტალური', annualFinal:'წლიური ფინალი',
+    schedule:'+ დაგეგმვა', previewPool:'⊙ აუზის გადახედვა', scheduledDraws:'დაგეგმილი გათამაშებები',
+    downloadCSV:'CSV გადმოწერა', name:'სახელი', type:'ტიპი', prize:'პრიზი', taxRsge:'გადასახადი (RS.GE)',
+    status:'სტატუსი', action:'მოქმედება',
+    taxForm:'📋 RS.GE საგადასახადო დეკლარაცია', taxRef:'RS.GE დეკლარაციის ნომერი', taxPaid:'გადახდილი გადასახადი',
+    taxDeclarer:'დეკლარანტი', saveTaxDeclaration:'✓ დეკლარაციის შენახვა', close:'დახურვა',
+    taxOk:'დეკლარირებულია', taxPending:'დეკლარაცია მოსალოდნელია', taxNotNeeded:'არ არის საჭირო',
+    dryRunTitle:'ტესტური გაშვება — შედეგი არ ინახება', execute:'▶ გათამაშება',
+    ticketFormula:'ბილეთის მოპოვების ფორმულა',
+    formulaDesc:'ცალკეული კოეფიციენტები Live თამაშისა და სლოტისთვის. ყველა მნიშვნელობა კაზინოს განისაზღვრება.',
+    liveGame:'LIVE თამაში', slot:'სლოტი', ticketsPerHour:'ბილეთი საათში', turnoverPerTicket:'ბრუნვა / ბილეთი',
+    minDuration:'მინ. ხანგრძლივობა (წთ)', handsPerHour:'რაუნდი საათში', spinsPerHour:'სპინი საათში',
+    limitsBonus:'ლიმიტები და ბონუსი', maxDailyTickets:'მაქს. დღიური ბილეთი', maxSessionTickets:'მაქს. სესიის ბილეთი',
+    consecutiveDaysBonus:'თანმიმდევრული დღის ბონუსი', bonusTicketAmount:'საბონუსო ბილეთის რაოდენობა',
+    poolCap:'აუზის ლიმიტი (მცირე მოთამაშის დაცვა)', save:'შენახვა', loadBtn:'↻ ჩატვირთვა',
+    exampleCalc:'მაგალითი გამოთვლა', gameType:'თამაშის ტიპი', duration:'ხანგრძლივობა (წთ)', turnover:'ბრუნვა',
+    calculate:'გამოთვლა', ticketsEarned:' ბილეთი მოპოვებულია',
+    playerList:'მოთამაშეების სია', search:'ძებნა…', all:'ყველა', eligible:'მონაწილე', won:'გამარჯვებული', detail:'დეტალები',
+    csvDownloading:'CSV იტვირთება…',
+    cardNo:'ბარათის ნომერი', playerName:'სახელი', finalTier:'ფინალი',
+    systemImpact:'სისტემის ეფექტი — KPI', retentionDesc:'გასულ თვეს მოსულთა დაბრუნების პროცენტი',
+    engagementDesc:'ბილეთის მქონე მოთამაშის წილი', avgSessionLbl:'საშ. სესია (წთ)',
+    avgSessionDesc:'ამ თვის საშუალო სესიის ხანგრძლივობა', dailySessionLbl:'დღიური სესია',
+    dailySessionDesc:'ამ კვირის დღიური საშუალო', engagedVsNot:'სისტემის ეფექტი — მონაწილე vs არამონაწილე',
+    retentionComment:'შენარჩუნების ანალიზი', weeklyTrend:'კვირეული ტენდენცია — ბოლო 12 კვირა',
+    week:'კვირა', uniquePlayers:'უნიკალური მოთამაშე', totalSessions:'სულ სესია',
+    visitsPerPlayer:'ვიზიტი მოთამაშეზე', avgDurMin:'საშ. ხანგრძლივობა (წთ)',
+    weeklyUniqueCaption:'კვირეული უნიკალური მოთამაშეების რაოდენობა',
+    noResultsYet:'გათამაშება ჯერ არ ჩატარებულა', noScheduledDraws:'დაგეგმილი გათამაშება არ არის',
+    noPlayersFound:'მოთამაშე ვერ მოიძებნა', summaryLoadError:'მიმოხილვის ჩატვირთვა ვერ მოხერხდა',
+    drawsLoadError:'გათამაშებების ჩატვირთვა ვერ მოხერხდა', cancelledMsg:'გაუქმებულია',
+    cancelError:'გაუქმების შეცდომა', selectDrawFirst:'გათამაშება არ არის არჩეული',
+    fillAllFields:'შეავსეთ ყველა ველი', taxSavedMsg:'✓ საგადასახადო დეკლარაცია შენახულია (საინფორმაციო ჩანაწერი).',
+    confirmCancelDraw:'გავაუქმოთ ეს გათამაშება?', certOpening:'სერტიფიკატი იხსნება ახალ ჩანართში…',
+    emailLabel:'ფოსტა', certEmailPrompt:'ელფოსტის მისამართი (ცარიელი დატოვეთ მოთამაშის შენახული მისამართის გამოსაყენებლად):',
+    certEmailSentMsg:'სერტიფიკატი გაიგზავნა ელფოსტით', certEmailError:'წერილის გაგზავნა ვერ მოხერხდა',
+    confirmDryRun:'ტესტური გაშვება', dryRunNote:'შედეგი არ შეინახება — მხოლოდ ეკრანზე გამოჩნდება.',
+    dryRunNoPlayers:'შესაფერისი მოთამაშე არ არის', dryRunPrefix:'🎯 ტესტი — გამარჯვებული:', dryRunSuffix:'ბილეთი · შედეგი არ შენახულა',
+    dryRunError:'ტესტის შეცდომა', enterPrizeAmount:'შეიყვანეთ პრიზის ოდენობა',
+    drawScheduledMsg:'გათამაშება დაგეგმილია ✓', previewLabel:'გადახედვა',
+    confirmExecuteDraw:'ჩავატაროთ გათამაშება? ეს მოქმედება შეუქცევადია.', drawError:'გათამაშების შეცდომა',
+    prizeNoteLabel:'პრიზის გადაცემის შენიშვნა (არასავალდებულო):', prizeDeliveredMsg:'✓ პრიზი მონიშნულია გადაცემულად',
+    formulaLoadedMsg:'ფორმულა ჩაიტვირთა', formulaLoadError:'ფორმულის ჩატვირთვა ვერ მოხერხდა',
+    formulaSavedMsg:'ფორმულა შენახულია ✓', formulaSaveError:'შენახვის შეცდომა',
+    loadFormulaFirst:'ჯერ ჩატვირთეთ ფორმულა', minDurationMsg:'მინიმალური ხანგრძლივობა',
+    calcFromDuration:'დროდან', calcFromTurnover:'ბრუნვიდან', calcLimited:'შეზღუდულია',
+    playersLoadError:'მოთამაშეების ჩატვირთვა ვერ მოხერხდა',
+    alertActiveTickets:'აქტიური ბილეთი', alertToday:'დღეს', alertConsecutiveDays:'თანმიმდევრული დღე',
+    alertYearWins:'წლის მოგებები', alertNoWins:'(მოგება არ არის)',
+    statusScheduled:'დაგეგმილია', statusInProgress:'მიმდინარეობს', statusCompleted:'დასრულებულია', statusCancelled:'გაუქმებულია',
+    excludedLabel:'გამორიცხულია', thisPeriod:'ეს პერიოდი', analyticsLoadError:'ანალიტიკის ჩატვირთვა ვერ მოხერხდა',
+    lastMonthLabel:'გასულ თვეს', returnedThisMonthLabel:'ამ თვეს დაბრუნდა', playerWord:'მოთამაშე',
+    salesLineIntro:'რას ეტყვით კლიენტს:',
+    salesLineTemplate:(a,b)=>`"გასულ თვეს მოსული ${a} მოთამაშიდან ${b}% ამ თვესაც დაბრუნდა."`,
+    participatingLabel:'გათამაშების მონაწილე', notParticipatingLabel:'არამონაწილე',
+    avgVisitLabel:'კვირ. ვიზიტი', avgDurationLabel:'საშ. ხანგრძლივობა',
+    visitFreqLabel:'ვიზიტის სიხშირე', sessionDurLabel:'სესიის ხანგრძლივობა',
+    effectQuoteTemplate:(v,s)=>`"გათამაშების მონაწილე მოთამაშეები ${v}%-ით ხშირად სტუმრობენ და ${s}%-ით მეტხანს რჩებიან."`,
+    moreLabel:'მეტი', eligiblePlayerLabel:'შესაფერისი მოთამაშე', totalTicketLabel:'სულ ბილეთი',
+    minutesShort:'წთ',
+    tierLabels:{daily:'ყოველდღიური',weekly:'ყოველკვირეული',monthly:'ყოველთვიური',quarterly:'კვარტალური',annual:'გრანდ-ფინალი'},
+  },
+};
+
+let _adminLang = 'tr';
+function at(key){
+  const v = (ADMIN_T[_adminLang]||ADMIN_T.tr)[key];
+  return v !== undefined ? v : key;
+}
+function tierLabel(t){ return (ADMIN_T[_adminLang]?.tierLabels||ADMIN_T.tr.tierLabels)[t]||t; }
+
+let _connState = null; // null | 'ok' | 'err'
+
+// ── DİL DEĞİŞTİRME — DOM'daki TÜM data-i18n öğelerini otomatik günceller ───────
+function setAdminLang(l){
+  _adminLang = l;
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.dataset.l===l));
+
+  document.querySelectorAll('[data-i18n]').forEach(el=>{
+    el.textContent = at(el.getAttribute('data-i18n'));
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el=>{
+    el.placeholder = at(el.getAttribute('data-i18n-placeholder'));
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach(el=>{
+    el.title = at(el.getAttribute('data-i18n-title'));
+  });
+
+  const connText = $('conn-text');
+  if(connText){
+    if(_connState === 'ok') connText.textContent = at('connected');
+    else if(_connState === 'err') connText.textContent = at('connFailed');
+    else connText.textContent = at('notConnected');
+  }
+
+  if(_players && _players.length) renderPlayers(_players);
+  if(document.getElementById('tab-draws')?.classList.contains('active')) loadDraws();
+  if(document.getElementById('tab-analytics')?.classList.contains('active')) loadAnalytics();
+}
+
+// ── API ─────────────────────────────────────────────────────────────────
+function base(){ return $('api-url').value.replace(/\/$/,'') }
+function key() { return $('api-key').value }
+async function api(path, opts={}){
+  const r = await fetch(base()+path, {
+    headers:{'X-Admin-Key':key(),'Content-Type':'application/json',...(opts.headers||{})},
+    ...opts
+  });
+  if(!r.ok) throw new Error((await r.json().catch(()=>({detail:r.statusText}))).detail || r.statusText);
+  return r.status === 204 ? null : r.json();
+}
+
+// ── TOAST ────────────────────────────────────────────────────────────────
+function toast(msg, type='ok'){
+  const t=$('toast'); t.textContent=msg; t.className='show '+type;
+  setTimeout(()=>t.className='',3200);
+}
+
+// ── TAB ──────────────────────────────────────────────────────────────────
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  $('tab-'+name).classList.add('active');
+  event.currentTarget.classList.add('active');
+  if(name==='overview')  loadOverview();
+  if(name==='draws')     loadDraws();
+  if(name==='formula')   { loadFormula(); loadMiniBonus(); }
+  if(name==='players')   loadPlayers();
+  if(name==='analytics') loadAnalytics();
+}
+
+function openDocs(){ window.open(base()+'/docs','_blank') }
+
+// ── CONNECTION ───────────────────────────────────────────────────────────
+async function testConn(){
+  try{
+    await api('/health');
+    _connState = 'ok';
+    $('dot').className='dot ok';
+    $('conn-text').textContent = at('connected');
+    $('conn-text').style.color='var(--green)';
+    loadAll(); toast(at('connSuccess'));
+  }catch(e){
+    _connState = 'err';
+    $('dot').className='dot err';
+    $('conn-text').textContent = at('connFailed');
+    $('conn-text').style.color='var(--red-l)';
+    toast(at('connError')+': '+e.message,'err');
+  }
+}
+
+function loadAll(){ loadOverview(); loadDraws(); }
+
+// ── OVERVIEW ─────────────────────────────────────────────────────────────
+async function loadOverview(){
+  try{
+    const [stats, results] = await Promise.all([
+      api('/api/v1/admin/stats/campaign'),
+      api('/api/v1/draws/results/history?limit=10'),
+    ]);
+    $('s-players').textContent = stats.total_active_players;
+    $('s-tickets').textContent = stats.total_active_tickets.toLocaleString('tr');
+    $('s-wins').textContent    = stats.total_prize_wins;
+    $('s-daily').textContent   = stats.wins_by_tier.daily || 0;
+    $('s-weekly').textContent  = stats.wins_by_tier.weekly || 0;
+    $('s-monthly').textContent = stats.wins_by_tier.monthly || 0;
+    $('s-quarterly').textContent = stats.wins_by_tier.quarterly || 0;
+    $('s-annual').textContent  = stats.wins_by_tier.annual || 0;
+
+    const tbody = $('results-tbody');
+    if(!results.length){ tbody.innerHTML=`<tr><td colspan="6" class="empty">${at('noResultsYet')}</td></tr>`; return; }
+    tbody.innerHTML = results.map(r=>`
+      <tr>
+        <td><strong>${escapeHtml(r.winner_card_id)}</strong></td>
+        <td style="font-size:11px;color:var(--dim)">${escapeHtml(r.draw_metadata?.draw_tier||'—')}</td>
+        <td style="color:var(--dim);font-family:monospace;font-size:11px">${escapeHtml((r.winning_ticket_number||'').slice(-8))}</td>
+        <td style="color:var(--dim);font-size:11px">${escapeHtml(r.executed_by||'—')}</td>
+        <td>${r.prize_distributed
+          ? `<span class="badge badge-green">✓ ${at('delivered')}</span>`
+          : `<button class="btn btn-dim" style="padding:3px 8px;font-size:10px" onclick="markDistributed('${encodeURIComponent(r.id)}')">${at('delivered')}</button>`}</td>
+        <td style="color:var(--dim)">${fmtDate(r.executed_at)}</td>
+      </tr>`).join('');
+  }catch(e){ toast(at('summaryLoadError')+': '+e.message,'err') }
+}
+
+// ── DRAWS ─────────────────────────────────────────────────────────────────
+async function loadDraws(){
+  try{
+    const draws = await api('/api/v1/draws/?limit=30');
+    const tbody = $('draws-tbody');
+    if(!draws.length){ tbody.innerHTML=`<tr><td colspan="7" class="empty">${at('noScheduledDraws')}</td></tr>`; return; }
+    tbody.innerHTML = draws.map(d=>{
+      const taxBadge = d.tax_declaration_required
+        ? (d.tax_cleared
+            ? `<span class="badge badge-green">✓ ${at('taxOk')}<br><small style="font-size:9px;opacity:.7">${d.tax_declaration_ref||''}</small></span>`
+            : `<span class="badge badge-red">⚠ ${at('taxPending')}</span>`)
+        : `<span class="badge badge-dim">${at('taxNotNeeded')}</span>`;
+      return `<tr>
+        <td>${escapeHtml(d.name)}</td>
+        <td><span class="badge tier-${d.draw_tier}" style="font-weight:600">${tierLabel(d.draw_tier)}</span></td>
+        <td>${fmtDate(d.scheduled_at)}</td>
+        <td>${fmtPrize(d.prize_amount, d.prize_currency)}</td>
+        <td>${taxBadge}</td>
+        <td>${statusBadge(d.status)}</td>
+        <td style="display:flex;gap:5px;flex-wrap:wrap">
+          ${d.status==='scheduled'?`
+            <button class="btn btn-cyan" style="padding:4px 10px;font-size:11px" onclick="previewPool('${escapeHtml(d.id)}')">${at('previewLabel')}</button>
+            ${d.tax_declaration_required && !d.tax_cleared
+              ? `<button class="btn btn-cyan" style="padding:4px 10px;font-size:11px" onclick="openTaxForm('${escapeHtml(d.id)}','${escapeHtml(d.name)}')">📋 ${at('taxRsge').split(' ')[0]}</button>`
+              : ''}
+            <button class="btn btn-gold" style="padding:4px 10px;font-size:11px" onclick="executeDraw('${escapeHtml(d.id)}','${escapeHtml(d.name)}')">${at('execute')}</button>
+            <button class="btn btn-dim" style="padding:4px 8px;font-size:11px" title="${at('dryRunTitle')}" onclick="dryRunDraw('${escapeHtml(d.id)}','${escapeHtml(d.name)}')">⊙</button>
+            <button class="btn btn-red" style="padding:4px 8px;font-size:11px" onclick="cancelDraw('${escapeHtml(d.id)}','${escapeHtml(d.name)}')">✕</button>
+          `:`<div style="display:flex;gap:5px">
+            <span style="color:var(--dim);font-size:11px">${d.status==='completed'?'✓':d.status}</span>
+            ${d.status==='completed'?`<button class="btn btn-dim" style="padding:3px 8px;font-size:10px" onclick="downloadCert('${escapeHtml(d.id)}')">📄 PDF</button>
+            <button class="btn btn-dim" style="padding:3px 8px;font-size:10px" onclick="emailCert('${escapeHtml(d.id)}')">✉️ ${at('emailLabel')}</button>`:''}
+          </div>`}
+        </td>
+      </tr>`;
+    }).join('');
+  }catch(e){ toast(at('drawsLoadError')+': '+e.message,'err') }
+}
+
+let _activeTaxDrawId = null;
+function openTaxForm(id, name){
+  _activeTaxDrawId = id;
+  $('tax-form-draw-name').textContent = name;
+  $('tax-ref').value=''; $('tax-amount').value=''; $('tax-declarer').value='';
+  $('tax-form-card').style.display='block';
+  $('tax-form-card').scrollIntoView({behavior:'smooth'});
+}
+function closeTaxForm(){ $('tax-form-card').style.display='none'; _activeTaxDrawId=null; }
+
+async function submitTaxDeclaration(){
+  if(!_activeTaxDrawId){ toast(at('selectDrawFirst'),'err'); return; }
+  const ref=$('tax-ref').value.trim(), amt=$('tax-amount').value, dec=$('tax-declarer').value.trim();
+  if(!ref||!amt||!dec){ toast(at('fillAllFields'),'err'); return; }
+  try{
+    await api(`/api/v1/draws/${_activeTaxDrawId}/tax-declaration`,{
+      method:'PATCH',
+      body:JSON.stringify({tax_declaration_ref:ref, tax_amount_paid:parseFloat(amt), declared_by:dec})
+    });
+    toast(at('taxSavedMsg'));
+    closeTaxForm(); loadDraws();
+  }catch(e){ toast('Error: '+e.message,'err') }
+}
+
+async function cancelDraw(id, name){
+  if(!confirm(`"${name}" ${at("confirmCancelDraw")}`)) return;
+  try{
+    await api(`/api/v1/draws/${id}/cancel`,{method:'PATCH'});
+    toast(`✓ ${at('cancelledMsg')}: ${name}`); loadDraws();
+  }catch(e){ toast(at('cancelError')+': '+e.message,'err') }
+}
+
+// Sertifika PDF indirme — admin anahtarı asla URL'e/query string'e eklenmez
+// (sunucu loglarında/tarayıcı geçmişinde görünmesin diye): yetkili header ile
+// blob olarak indirilir, sonra geçici bir object URL açılır.
+async function downloadCert(scheduleId){
+  try{
+    const r = await fetch(`${base()}/api/v1/draws/${scheduleId}/certificate`, {
+      headers: {'X-Admin-Key': key()}
+    });
+    if(!r.ok) throw new Error((await r.json().catch(()=>({detail:r.statusText}))).detail || r.statusText);
+    const blob = await r.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    window.open(blobUrl, '_blank');
+    toast(at('certOpening'));
+    setTimeout(()=>URL.revokeObjectURL(blobUrl), 60000);
+  }catch(e){ toast('Hata: '+e.message,'err') }
+}
+
+// Sertifikayı misafirin (veya girilen) e-postasına gönder
+async function emailCert(scheduleId){
+  const email = prompt(at('certEmailPrompt'), '');
+  if(email === null) return; // vazgeçildi
+  try{
+    const r = await api(`/api/v1/draws/${scheduleId}/certificate/email`, {
+      method:'POST', body: JSON.stringify({to_email: email ? email.trim() : null})
+    });
+    toast(`✓ ${at('certEmailSentMsg')}: ${r.to}`);
+  }catch(e){ toast(at('certEmailError')+': '+e.message,'err') }
+}
+
+// Kuru tatbikat — kazanan seçilir ama veritabanına kaydedilmez
+async function dryRunDraw(id, name){
+  if(!confirm(`"${name}" ${at('confirmDryRun')}\n\n${at('dryRunNote')}`)) return;
+  try{
+    const pool = await api(`/api/v1/draws/${id}/pool`);
+    if(!pool.eligible_players){ toast(at('dryRunNoPlayers'),'err'); return; }
+    // Rastgele kazanan seç (local — DB'ye yazmadan)
+    const players = pool.players;
+    const winner  = players[Math.floor(Math.random() * players.length)];
+    toast(`${at('dryRunPrefix')} ${winner.name} (${winner.card_id}) · ${winner.ticket_count} ${at('dryRunSuffix')}`);
+  }catch(e){ toast(at('dryRunError')+': '+e.message,'err') }
+}
+
+// Set default datetime to now+1h
+(function(){
+  const d = new Date(Date.now()+3600000);
+  d.setSeconds(0,0);
+  $('f-date').value = d.toISOString().slice(0,16);
+})();
+
+async function scheduleDrawFn(){
+  const body={
+    draw_tier:$('f-tier').value,
+    name:$('f-name').value||tierLabel($('f-tier').value)+' — '+new Date().toLocaleDateString('tr'),
+    scheduled_at:new Date($('f-date').value).toISOString(),
+    prize_amount:parseFloat($('f-amount').value)||0,
+    prize_currency:$('f-currency').value,
+    prize_description:$('f-desc').value||$('f-amount').value+' '+$('f-currency').value,
+  };
+  if(!body.prize_amount){ toast(at('enterPrizeAmount'),'err'); return; }
+  try{
+    await api('/api/v1/draws/schedule',{method:'POST',body:JSON.stringify(body)});
+    toast(at('drawScheduledMsg')); loadDraws();
+  }catch(e){ toast('Hata: '+e.message,'err') }
+}
+
+async function previewPool(id){
+  try{
+    const data = await api(`/api/v1/draws/${id}/pool`);
+    showPoolInfo(data);
+  }catch(e){ toast('Hata: '+e.message,'err') }
+}
+
+async function previewPoolFn(){
+  const tier = $('f-tier').value;
+  try{
+    const data = await api(`/api/v1/draws/schedule`, {
+      method:'POST',
+      body:JSON.stringify({
+        draw_tier:tier,name:at('previewLabel'),
+        scheduled_at:new Date().toISOString(),
+        prize_amount:1,prize_currency:'TRY',prize_description:at('previewLabel')
+      })
+    });
+    const pool = await api(`/api/v1/draws/${data.id}/pool`);
+    showPoolInfo(pool);
+  }catch(e){ toast(at('previewLabel')+': '+e.message,'err') }
+}
+
+function showPoolInfo(data){
+  const el=$('pool-preview'); el.style.display='block';
+  el.innerHTML=`
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:14px">
+      <div style="display:flex;gap:24px;margin-bottom:12px">
+        <div><div style="font-size:22px;font-weight:600;color:var(--cyan)">${data.eligible_players}</div><div style="font-size:11px;color:var(--dim)">${at('eligiblePlayerLabel')}</div></div>
+        <div><div style="font-size:22px;font-weight:600;color:var(--gold)">${data.total_tickets.toLocaleString('tr')}</div><div style="font-size:11px;color:var(--dim)">${at('totalTicketLabel')}</div></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${data.players.slice(0,20).map(p=>`
+          <span style="background:var(--bg4);border:1px solid var(--dim2);padding:4px 8px;border-radius:4px;font-size:11px">
+            ${escapeHtml(p.name)} <span style="color:var(--gold)">${p.ticket_count}</span>
+          </span>`).join('')}
+        ${data.players.length>20?`<span style="color:var(--dim);font-size:11px">+${data.players.length-20} ${at('moreLabel')}</span>`:''}
+      </div>
+    </div>`;
+}
+
+async function executeDraw(id, name){
+  if(!confirm(`"${name}" ${at("confirmExecuteDraw")}`)) return;
+  try{
+    const result = await api(`/api/v1/draws/${id}/execute`,{method:'POST'});
+    toast(`🏆 ${at('winnerCard')}: ${result.winner_card_id} — ${at('ticket')}: ${result.winning_ticket_number}`);
+    loadDraws(); loadOverview();
+  }catch(e){ toast(at('drawError')+': '+e.message,'err') }
+}
+
+async function markDistributed(resultId){
+  const notes = prompt(at('prizeNoteLabel'),'') || '';
+  try{
+    // result_id'den schedule_id bulmak için bir yol lazım — overview'da schedule_id ekleyelim
+    await api(`/api/v1/draws/result/${resultId}/prize-distributed`,{method:'PATCH',body:JSON.stringify({notes})});
+    toast(at('prizeDeliveredMsg')); loadOverview();
+  }catch(e){ toast('Hata: '+e.message,'err') }
+}
+
+// ── FORMULA ───────────────────────────────────────────────────────────────
+async function loadFormula(){
+  try{
+    const f = await api('/api/v1/admin/formula');
+    _formula = f;
+    $('live_tph').value  = f.live_tickets_per_hour;
+    $('live_tur').value  = f.live_turnover_per_ticket;
+    $('live_min').value  = f.live_min_session_minutes;
+    $('live_rph').value  = f.live_rounds_per_hour || 30;
+    $('slot_tph').value  = f.slot_tickets_per_hour;
+    $('slot_tur').value  = f.slot_turnover_per_ticket;
+    $('slot_min').value  = f.slot_min_session_minutes;
+    $('slot_rph').value  = f.slot_rounds_per_hour || 300;
+    $('max_day').value   = f.max_tickets_per_day;
+    $('max_ses').value   = f.max_tickets_per_session;
+    $('con_days').value  = f.consecutive_day_bonus_days;
+    $('con_tick').value  = f.consecutive_day_bonus_tickets;
+    $('max_pool').value  = f.max_pool_tickets || 20;
+    toast(at('formulaLoadedMsg'));
+  }catch(e){ toast(at('formulaLoadError')+': '+e.message,'err') }
+}
+
+async function saveFormula(){
+  const body={
+    live_tickets_per_hour:    parseFloat($('live_tph').value),
+    live_turnover_per_ticket: parseFloat($('live_tur').value),
+    live_min_session_minutes: parseInt($('live_min').value),
+    live_rounds_per_hour:     parseInt($('live_rph').value)||30,
+    slot_tickets_per_hour:    parseFloat($('slot_tph').value),
+    slot_turnover_per_ticket: parseFloat($('slot_tur').value),
+    slot_min_session_minutes: parseInt($('slot_min').value),
+    slot_rounds_per_hour:     parseInt($('slot_rph').value)||300,
+    max_tickets_per_day:      parseInt($('max_day').value),
+    max_tickets_per_session:  parseInt($('max_ses').value),
+    consecutive_day_bonus_days:    parseInt($('con_days').value),
+    consecutive_day_bonus_tickets: parseInt($('con_tick').value),
+    max_pool_tickets:         parseInt($('max_pool').value)||20,
+  };
+  try{
+    await api('/api/v1/admin/formula?updated_by=admin',{method:'PUT',body:JSON.stringify(body)});
+    toast(at('formulaSavedMsg')); _formula=body;
+  }catch(e){ toast(at('formulaSaveError')+': '+e.message,'err') }
+}
+
+function simulate(){
+  const type = $('sim-type').value;
+  const dur  = parseInt($('sim-dur').value)||0;
+  const ciro = parseFloat($('sim-ciro').value)||0;
+  const f = _formula;
+  if(!f.max_tickets_per_day){ toast(at('loadFormulaFirst'),'err'); return; }
+  const min_dur = type==='live' ? (f.live_min_session_minutes||15) : (f.slot_min_session_minutes||15);
+  if(dur<min_dur){ $('sim-result').style.display='block'; $('sim-num').textContent='0'; $('sim-detail').textContent=`${at('minDurationMsg')}: ${min_dur} ${at('minutesShort')}`; return; }
+  const hours = dur/60;
+  let time_t, ciro_t;
+  if(type==='live'){
+    time_t = hours*(f.live_tickets_per_hour||1);
+    ciro_t = ciro/(f.live_turnover_per_ticket||500);
+  }else{
+    time_t = hours*(f.slot_tickets_per_hour||0.5);
+    ciro_t = ciro/(f.slot_turnover_per_ticket||1000);
+  }
+  const total = Math.min(Math.floor(time_t+ciro_t), f.max_tickets_per_session||5);
+  const capped = Math.min(total, f.max_tickets_per_day||10);
+  $('sim-result').style.display='block';
+  $('sim-num').textContent=capped;
+  $('sim-detail').textContent=`${at('calcFromDuration')}: ${time_t.toFixed(1)} + ${at('calcFromTurnover')}: ${ciro_t.toFixed(1)} = ${(time_t+ciro_t).toFixed(1)} → ${at('calcLimited')}: ${capped}`;
+}
+
+// ── MİNİ BONUS (AKTİF OYUNCU) ───────────────────────────────────────────────
+async function loadMiniBonus(){
+  try{
+    const c = await api('/api/v1/admin/mini-bonus/config');
+    $('mb-active').checked  = c.is_active;
+    $('mb-amount').value    = c.prize_amount;
+    $('mb-interval').value  = c.interval_minutes;
+    $('mb-start').value     = c.window_start_hour;
+    $('mb-end').value       = c.window_end_hour;
+    loadMiniBonusCost();
+  }catch(e){ /* sessiz — ilk açılışta ayar yoksa varsayılan gösterilir */ }
+}
+
+async function loadMiniBonusCost(){
+  try{
+    const est = await api('/api/v1/admin/mini-bonus/cost-estimate');
+    $('mb-cost-box').style.display = 'block';
+    $('mb-draws-per-day').textContent = est.draws_per_day;
+    $('mb-daily-cost').textContent    = Number(est.daily_cost).toLocaleString('tr') + ' ' + est.prize_currency;
+    $('mb-monthly-cost').textContent  = Number(est.monthly_cost).toLocaleString('tr') + ' ' + est.prize_currency;
+  }catch(e){ /* henüz kaydedilmemiş olabilir, sorun değil */ }
+}
+
+async function saveMiniBonus(){
+  const body = {
+    is_active:         $('mb-active').checked,
+    prize_amount:       parseFloat($('mb-amount').value)   || 100,
+    prize_currency:     'GEL',
+    interval_minutes:   parseInt($('mb-interval').value)   || 30,
+    window_start_hour:  parseInt($('mb-start').value)      || 14,
+    window_end_hour:    parseInt($('mb-end').value)        || 6,
+  };
+  try{
+    await api('/api/v1/admin/mini-bonus/config?updated_by=admin',{method:'PUT',body:JSON.stringify(body)});
+    toast('✓ Mini bonus ayarları kaydedildi');
+    loadMiniBonusCost();
+  }catch(e){ toast('Kayıt hatası: '+e.message,'err') }
+}
+
+async function toggleMiniBonus(){
+  // Checkbox değişince ayarları hemen kaydet (kullanıcı ayrıca "Kaydet" basmasın diye)
+  await saveMiniBonus();
+}
+
+async function testMiniBonusNow(){
+  try{
+    const r = await api('/api/v1/admin/mini-bonus/execute-now',{method:'POST'});
+    if(r.executed){
+      toast(`🎁 Test başarılı — Kazanan: ${r.winner_card_id} (${r.prize_amount} ${r.prize_currency})`);
+    }else{
+      toast('Şu an aktif oynayan oyuncu yok — test edilemedi','err');
+    }
+  }catch(e){ toast('Test hatası: '+e.message,'err') }
+}
+
+// ── PLAYERS ───────────────────────────────────────────────────────────────
+async function loadPlayers(){
+  try{
+    const players = await api('/api/v1/admin/players?limit=100');
+    _players = await Promise.all(players.map(async p=>{
+      try{
+        const e = await api(`/api/v1/admin/players/${p.card_id}/eligibility`);
+        return {...p, eligibility:e};
+      }catch{ return p; }
+    }));
+    renderPlayers(_players);
+  }catch(e){ toast(at('playersLoadError')+': '+e.message,'err') }
+}
+
+function renderPlayers(list){
+  const tbody=$('players-tbody');
+  if(!list.length){ tbody.innerHTML=`<tr><td colspan="8" class="empty">${at("noPlayersFound")}</td></tr>`; return; }
+  tbody.innerHTML=list.map(p=>{
+    const e=p.eligibility||{};
+    const by_tier=e.eligibility_by_tier||{};
+    const ts=e.ticket_summary||{};
+    return `<tr>
+      <td style="font-family:monospace;font-size:12px;color:var(--dim)">${escapeHtml(p.card_id)}</td>
+      <td><strong>${escapeHtml(p.name)}</strong></td>
+      <td><span style="font-size:16px;font-weight:600;color:var(--gold)">${ts.total_active_tickets??'—'}</span></td>
+      <td>${eligBadge(by_tier.weekly)}</td>
+      <td>${eligBadge(by_tier.monthly)}</td>
+      <td>${eligBadge(by_tier.quarterly)}</td>
+      <td>${eligBadge(by_tier.annual,'Final')}</td>
+      <td><button class="btn btn-dim" style="padding:4px 10px;font-size:11px" onclick="viewPlayer('${escapeHtml(p.card_id)}')">${at('detail')}</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function filterPlayers(){
+  const q = $('p-search').value.toLowerCase();
+  const f = document.getElementById('p-filter')?.value || '';
+  const filtered = _players.filter(p=>{
+    const match = p.name.toLowerCase().includes(q) || p.card_id.toLowerCase().includes(q);
+    if(!match) return false;
+    if(f==='eligible' && p.won) return false;
+    if(f==='won' && !p.won) return false;
+    return true;
+  });
+  renderPlayers(filtered);
+}
+
+function exportCSV(type){
+  const url = `${base()}/api/v1/admin/reports/${type}.csv`;
+  window.open(url, '_blank');
+  toast(at('csvDownloading'));
+}
+
+async function viewPlayer(card_id){
+  try{
+    const [player, tickets, elig] = await Promise.all([
+      api(`/api/v1/admin/players/${card_id}`),
+      api(`/api/v1/admin/players/${card_id}/tickets`),
+      api(`/api/v1/admin/players/${card_id}/eligibility`),
+    ]);
+    const wins = elig.wins_this_year||[];
+    alert(`${player.name} (${card_id})\n\n${at('alertActiveTickets')}: ${tickets.total_active_tickets}\n${at('alertToday')}: ${tickets.tickets_earned_today}\n${at('alertConsecutiveDays')}: ${tickets.consecutive_days}\n\n${at('alertYearWins')}:\n${wins.length?wins.map(w=>`  ${tierLabel(w.tier)}: ${w.prize} (${w.won_at.slice(0,10)})`).join('\n'):'  '+at('alertNoWins')}`);
+  }catch(e){ toast('Hata: '+e.message,'err') }
+}
+
+// ── HELPERS ───────────────────────────────────────────────────────────────
+function fmtDate(iso){ const d=new Date(iso); return d.toLocaleDateString('tr')+' '+d.toLocaleTimeString('tr',{hour:'2-digit',minute:'2-digit'}) }
+function fmtPrize(amt,cur){ const s={TRY:'₺',EUR:'€',USD:'$',GEL:'₾',GBP:'£'}; return `${parseFloat(amt).toLocaleString('tr')} ${s[cur]||cur}` }
+function statusBadge(s){
+  const m={scheduled:'badge-gold',in_progress:'badge-orange',completed:'badge-green',cancelled:'badge-dim'};
+  const l={scheduled:at('statusScheduled'),in_progress:at('statusInProgress'),completed:at('statusCompleted'),cancelled:at('statusCancelled')};
+  return `<span class="badge ${m[s]||'badge-dim'}">${l[s]||s}</span>`;
+}
+function eligBadge(e){
+  if(!e) return '<span style="color:var(--dim)">—</span>';
+  return e.eligible
+    ? `<span class="badge badge-green" title="${at('eligible')}">✓</span>`
+    : `<span class="badge badge-red" title="${at('excludedLabel')} (${e.period_end?.slice(0,10)||at('thisPeriod')})">✗</span>`;
+}
+</script>
+</body>
+</html>
+<script>
+// ── ANALİTİK ──────────────────────────────────────────────────────────────────
+async function loadAnalytics(){
+  try{
+    const [summary, trend, compare] = await Promise.all([
+      api('/api/v1/analytics/summary'),
+      api('/api/v1/analytics/weekly-trend?weeks=12'),
+      api('/api/v1/analytics/engagement-comparison'),
+    ]);
+
+    $('kpi-retention').textContent    = summary.retention.retention_rate_pct + '%';
+    $('kpi-engagement').textContent   = summary.players.engagement_rate_pct + '%';
+    $('kpi-avg-session').textContent  = summary.sessions.avg_duration_minutes;
+    $('kpi-daily-sessions').textContent = summary.sessions.daily_sessions_avg_this_week;
+
+    const r = summary.retention;
+    $('retention-box').innerHTML = `
+      <div style="margin-bottom:12px">
+        <div style="font-size:26px;font-weight:700;color:${r.retention_rate_pct>=70?'var(--green)':r.retention_rate_pct>=50?'var(--gold)':'var(--red-l)'}">${r.retention_rate_pct}%</div>
+        <div style="font-size:11px;color:var(--dim);margin-top:4px">${r.interpretation}</div>
+      </div>
+      <div style="font-size:12px;color:var(--dim)">${at('lastMonthLabel')}: <strong style="color:var(--text)">${r.last_month_players}</strong> ${at('playerWord')}</div>
+      <div style="font-size:12px;color:var(--dim)">${at('returnedThisMonthLabel')}: <strong style="color:var(--green)">${r.retained_this_month}</strong> ${at('playerWord')}</div>
+      <div style="margin-top:12px;padding:10px;background:var(--bg3);border-radius:5px;font-size:11px;color:var(--dim)">
+        ${at('salesLineIntro')}<br>
+        <strong style="color:var(--text)">${at('salesLineTemplate')(r.last_month_players, r.retention_rate_pct)}</strong>
+      </div>`;
+
+    const e = compare.engaged, n = compare.non_engaged, d = compare.difference;
+    $('comparison-box').innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+        <div style="padding:12px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.15);border-radius:5px">
+          <div style="font-size:10px;letter-spacing:2px;color:var(--green);margin-bottom:6px">${at('participatingLabel')}</div>
+          <div style="font-size:18px;font-weight:600;color:var(--text)">${e.players} ${at('playerWord')}</div>
+          <div style="font-size:11px;color:var(--dim);margin-top:4px">${at('avgVisitLabel')}: <strong style="color:var(--green)">${e.avg_sessions_per_player_per_week||0}</strong></div>
+          <div style="font-size:11px;color:var(--dim)">${at('avgDurationLabel')}: <strong style="color:var(--green)">${e.avg_duration_min||0} ${at('minutesShort')}</strong></div>
+        </div>
+        <div style="padding:12px;background:rgba(106,96,88,.06);border:1px solid rgba(106,96,88,.15);border-radius:5px">
+          <div style="font-size:10px;letter-spacing:2px;color:var(--dim);margin-bottom:6px">${at('notParticipatingLabel')}</div>
+          <div style="font-size:18px;font-weight:600;color:var(--text)">${n.players} ${at('playerWord')}</div>
+          <div style="font-size:11px;color:var(--dim);margin-top:4px">${at('avgVisitLabel')}: <strong>${n.avg_sessions_per_player_per_week||0}</strong></div>
+          <div style="font-size:11px;color:var(--dim)">${at('avgDurationLabel')}: <strong>${n.avg_duration_min||0} ${at('minutesShort')}</strong></div>
+        </div>
+      </div>
+      <div style="padding:10px 14px;background:var(--bg3);border-radius:5px;border-left:3px solid ${d.visit_frequency_uplift_pct>0?'var(--green)':'var(--red-l)'}">
+        <div style="font-size:11px;font-weight:600;color:var(--text)">
+          ${d.visit_frequency_uplift_pct>0?'✓':'✗'}  ${d.interpretation}
+        </div>
+        ${d.visit_frequency_uplift_pct>0?`
+        <div style="font-size:11px;color:var(--dim);margin-top:4px">
+          ${at('visitFreqLabel')}: <strong style="color:var(--green)">+${d.visit_frequency_uplift_pct}%</strong>
+          &nbsp;·&nbsp;
+          ${at('sessionDurLabel')}: <strong style="color:var(--green)">+${d.session_duration_uplift_pct}%</strong>
+        </div>
+        <div style="font-size:10px;color:var(--dim);margin-top:6px;font-style:italic">
+          ${at('effectQuoteTemplate')(d.visit_frequency_uplift_pct, d.session_duration_uplift_pct)}
+        </div>`:''}
+      </div>`;
+
+    const weeks = trend.weeks;
+    const max_unique = Math.max(...weeks.map(w=>w.unique_players), 1);
+    $('trend-tbody').innerHTML = weeks.map(w=>`
+      <tr>
+        <td>${w.week_label}</td>
+        <td><strong style="color:var(--cyan)">${w.unique_players}</strong></td>
+        <td>${w.total_sessions}</td>
+        <td style="color:var(--gold)">${w.visits_per_player}</td>
+        <td style="color:var(--dim)">${w.avg_session_min}</td>
+      </tr>`).join('');
+
+    $('trend-chart').innerHTML = weeks.map(w=>{
+      const h = Math.max(4, Math.round(w.unique_players / max_unique * 72));
+      return `<div title="${w.week_label}: ${w.unique_players} ${at('playerWord')}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
+        <div style="width:100%;height:${h}px;background:rgba(0,200,255,.35);border-radius:2px 2px 0 0;min-height:3px"></div>
+        <div style="font-size:8px;color:var(--dim);white-space:nowrap;overflow:hidden;max-width:100%">${w.week_label.split('.')[0]}</div>
+      </div>`;
+    }).join('');
+
+  }catch(e){ toast(at('analyticsLoadError')+': '+e.message,'err') }
+}
+</script>

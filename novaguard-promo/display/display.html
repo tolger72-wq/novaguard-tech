@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>NovaGuard — Çekiliş Ekranı</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Cinzel+Decorative:wght@700;900&display=swap');
+:root{--gold:#d4af37;--gold-l:#f0d060;--gold-d:#8b6d1a;--red:#c41e3a;--red-l:#e8334a;--cyan:#00c8ff;--bg:#05050a;--text:#ede5d0;--dim:#524a40}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Cinzel',serif;min-height:100vh;overflow:hidden;user-select:none}
+#bg{position:fixed;inset:0;background:repeating-linear-gradient(45deg,transparent,transparent 44px,rgba(212,175,55,.008) 44px,rgba(212,175,55,.008) 45px),repeating-linear-gradient(-45deg,transparent,transparent 44px,rgba(212,175,55,.008) 44px,rgba(212,175,55,.008) 45px)}
+
+/* HEADER */
+#header{position:fixed;top:0;left:0;right:0;z-index:10;display:flex;align-items:center;justify-content:space-between;padding:12px 24px;background:rgba(5,5,10,.96);border-bottom:1px solid rgba(212,175,55,.08);backdrop-filter:blur(12px)}
+#brand{font-family:'Cinzel Decorative',serif;font-size:11px;letter-spacing:6px;color:var(--gold)}
+.lang-btns{display:flex;gap:5px}
+.lang-btn{background:transparent;border:1px solid rgba(212,175,55,.18);color:rgba(212,175,55,.4);padding:5px 10px;cursor:pointer;font-family:'Cinzel',serif;font-size:9px;letter-spacing:2px;transition:all .15s}
+.lang-btn.active{background:rgba(212,175,55,.1);border-color:var(--gold);color:var(--gold)}
+#live-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 8px #22c55e;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* MAIN */
+#main{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:80px 24px 60px;gap:22px}
+
+/* COUNTDOWN */
+#countdown{text-align:center}
+#countdown-label{font-size:9px;letter-spacing:4px;color:rgba(232,51,74,.5);margin-bottom:10px}
+#countdown-nums{display:flex;gap:20px;justify-content:center}
+.cnum{text-align:center}
+.cnum-val{font-size:36px;font-weight:900;color:var(--red-l);line-height:1}
+.cnum-lbl{font-size:8px;letter-spacing:3px;color:rgba(232,51,74,.35);margin-top:4px}
+
+/* DRAW BOX */
+#draw-box{width:100%;max-width:720px;border:2px solid rgba(212,175,55,.2);background:rgba(12,10,18,.8);backdrop-filter:blur(8px)}
+#draw-header{padding:16px 22px;border-bottom:1px solid rgba(212,175,55,.1);display:flex;justify-content:space-between;align-items:center}
+#draw-tier{font-size:9px;letter-spacing:4px;color:var(--gold);opacity:.7}
+#draw-prize{font-size:22px;font-weight:700;color:var(--gold)}
+#draw-body{padding:32px 24px;min-height:180px;display:flex;align-items:center;justify-content:center;text-align:center}
+
+/* DRUM */
+#drum-card{font-size:28px;font-weight:700;letter-spacing:4px;animation:drum-flash .12s ease-in-out infinite}
+#drum-name{font-size:18px;color:rgba(237,229,208,.7);margin-top:8px}
+@keyframes drum-flash{0%,100%{opacity:.5}50%{opacity:1}}
+
+/* WINNER */
+#winner-box{animation:winner-pop .7s cubic-bezier(.34,1.56,.64,1) forwards;text-align:center}
+@keyframes winner-pop{0%{transform:scale(.1) rotate(-15deg);opacity:0}65%{transform:scale(1.06) rotate(2deg)}100%{transform:scale(1) rotate(0)}}
+#winner-label{font-size:9px;letter-spacing:5px;color:var(--gold);margin-bottom:12px}
+#winner-name{font-family:'Cinzel Decorative',serif;font-size:42px;font-weight:900;color:var(--gold-l);line-height:1;animation:glow 2s ease-in-out infinite}
+#winner-card{font-size:12px;color:var(--dim);margin-top:8px;letter-spacing:2px}
+#winner-prize{font-size:20px;color:var(--gold);letter-spacing:3px;margin-top:10px}
+@keyframes glow{0%,100%{text-shadow:0 0 20px rgba(212,175,55,.4)}50%{text-shadow:0 0 50px rgba(212,175,55,.9),0 0 100px rgba(212,175,55,.3)}}
+
+/* IDLE */
+#idle-box{text-align:center;opacity:.5}
+#idle-icon{font-size:48px;margin-bottom:16px;animation:float 3s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+#idle-text{font-size:11px;letter-spacing:4px;color:var(--dim)}
+
+/* LEADERBOARD */
+#leaderboard{width:100%;max-width:720px}
+#lb-title{font-size:9px;letter-spacing:4px;color:var(--dim);margin-bottom:10px}
+#lb-list{display:flex;flex-wrap:wrap;gap:6px}
+.lb-item{padding:6px 12px;background:rgba(14,12,22,.8);border:1px solid rgba(212,175,55,.08);font-size:11px;display:flex;gap:8px;align-items:center;min-width:160px;flex:1}
+.lb-rank{color:var(--dim);min-width:18px}
+.lb-name{color:var(--text);flex:1}
+.lb-tickets{color:var(--gold);font-weight:700}
+
+/* TICKER */
+#ticker{position:fixed;bottom:0;left:0;right:0;background:rgba(5,5,10,.96);border-top:1px solid rgba(212,175,55,.06);padding:7px 0;overflow:hidden}
+#ticker-inner{white-space:nowrap;display:inline-block;animation:scroll 45s linear infinite;font-size:9px;letter-spacing:2px;color:var(--dim)}
+@keyframes scroll{from{transform:translateX(100vw)}to{transform:translateX(-100%)}}
+
+/* OP TOGGLE */
+#op-toggle{position:fixed;bottom:28px;right:24px;z-index:50;background:rgba(180,30,50,.07);border:1px solid rgba(180,30,50,.25);color:rgba(220,60,80,.5);padding:7px 14px;cursor:pointer;font-family:'Cinzel',serif;font-size:8px;letter-spacing:3px}
+
+/* OP PANEL */
+#op-panel{position:fixed;top:0;right:0;width:300px;height:100vh;background:rgba(8,6,14,.98);border-left:1px solid rgba(212,175,55,.1);z-index:100;padding:18px;display:none;flex-direction:column;gap:10px;overflow-y:auto}
+#op-panel.open{display:flex}
+.op-label{font-size:9px;letter-spacing:2px;color:var(--dim);margin-bottom:4px}
+.op-input{width:100%;background:rgba(20,20,32,.9);border:1px solid rgba(212,175,55,.15);color:var(--text);padding:8px 10px;font-family:monospace;font-size:11px;outline:none;margin-bottom:8px;border-radius:3px}
+.op-btn{width:100%;padding:9px;border:none;cursor:pointer;font-family:'Cinzel',serif;font-size:9px;letter-spacing:3px;margin-bottom:6px;border-radius:3px}
+.btn-gold{background:rgba(212,175,55,.1);border:1px solid rgba(212,175,55,.3);color:var(--gold)}
+.btn-cyan{background:rgba(0,200,255,.08);border:1px solid rgba(0,200,255,.3);color:var(--cyan)}
+.btn-dim{background:transparent;border:1px solid rgba(82,74,64,.3);color:var(--dim)}
+.op-sep{height:1px;background:rgba(212,175,55,.07);margin:6px 0}
+#conn-dot{width:7px;height:7px;border-radius:50%;background:var(--dim);display:inline-block}
+#conn-dot.ok{background:#22c55e;box-shadow:0 0 5px #22c55e}
+#conn-dot.err{background:var(--red-l)}
+
+/* MİNİ BONUS BİLDİRİMİ — köşede kısa süre görünen küçük kart */
+#mini-bonus-popup{
+  position:fixed; top:78px; right:24px; z-index:80;
+  background:rgba(12,10,18,.96); border:2px solid var(--cyan);
+  border-radius:10px; padding:16px 20px; min-width:260px;
+  box-shadow:0 0 30px rgba(0,200,255,.25);
+  opacity:0; transform:translateX(40px);
+  transition:opacity .4s ease, transform .4s ease;
+  pointer-events:none;
+}
+#mini-bonus-popup.show{ opacity:1; transform:translateX(0) }
+#mb-popup-label{font-size:9px;letter-spacing:3px;color:var(--cyan);margin-bottom:8px}
+#mb-popup-name{font-family:'Cinzel Decorative',serif;font-size:20px;color:var(--gold-l);margin-bottom:4px}
+#mb-popup-prize{font-size:13px;color:var(--gold);letter-spacing:1px}
+</style>
+</head>
+<body>
+<div id="bg"></div>
+
+<header id="header">
+  <!-- LOGO + CASINO ADI -->
+  <div style="display:flex;align-items:center;gap:12px">
+    <img id="casino-logo" src="" alt="" style="height:36px;display:none;object-fit:contain">
+    <div>
+      <div id="casino-name" style="font-family:'Cinzel Decorative',serif;font-size:13px;letter-spacing:4px;color:var(--gold);line-height:1"></div>
+      <div id="casino-tagline" style="font-family:'Cinzel',serif;font-size:8px;letter-spacing:3px;color:rgba(212,175,55,.4);margin-top:3px"></div>
+    </div>
+  </div>
+
+  <!-- DİL SEÇİCİ -->
+  <div class="lang-btns">
+    <button class="lang-btn active" onclick="setLang('tr')">TR</button>
+    <button class="lang-btn" onclick="setLang('en')">EN</button>
+    <button class="lang-btn" onclick="setLang('ru')">RU</button>
+    <button class="lang-btn" onclick="setLang('ka')">KA</button>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:7px">
+    <div id="live-dot"></div>
+    <span id="status-txt" style="font-size:9px;letter-spacing:2px;color:rgba(34,197,94,.7)"></span>
+  </div>
+</header>
+
+<div id="main">
+  <div id="countdown">
+    <div id="countdown-label"></div>
+    <div id="countdown-nums">
+      <div class="cnum"><div class="cnum-val" id="cd-g">--</div><div class="cnum-lbl" id="cd-g-lbl"></div></div>
+      <div class="cnum"><div class="cnum-val" id="cd-s">--</div><div class="cnum-lbl" id="cd-s-lbl"></div></div>
+      <div class="cnum"><div class="cnum-val" id="cd-d">--</div><div class="cnum-lbl" id="cd-d-lbl"></div></div>
+      <div class="cnum"><div class="cnum-val" id="cd-sn">--</div><div class="cnum-lbl" id="cd-sn-lbl"></div></div>
+    </div>
+  </div>
+
+  <div id="draw-box">
+    <div id="draw-header">
+      <div id="draw-tier"></div>
+      <div id="draw-prize">—</div>
+    </div>
+    <div id="draw-body">
+      <div id="idle-box">
+        <div id="idle-icon">◈</div>
+        <div id="idle-text"></div>
+      </div>
+      <div id="drum-box" style="display:none">
+        <div id="drum-card">———</div>
+        <div id="drum-name"></div>
+      </div>
+      <div id="winner-box" style="display:none">
+        <div id="winner-label"></div>
+        <div id="winner-name">—</div>
+        <div id="winner-card"></div>
+        <div id="winner-prize"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="leaderboard">
+    <div id="lb-title"></div>
+    <div id="lb-list"></div>
+  </div>
+</div>
+
+<div id="ticker"><span id="ticker-inner">◈ &nbsp; NOVAGUARD &nbsp; ◈</span></div>
+
+<!-- MİNİ BONUS BİLDİRİMİ — biri kazanınca burada kısa süre görünür -->
+<div id="mini-bonus-popup">
+  <div id="mb-popup-label">🎁 AKTİF OYUNCU BONUSU</div>
+  <div id="mb-popup-name">—</div>
+  <div id="mb-popup-prize">—</div>
+</div>
+
+<button id="op-toggle" onclick="togglePanel()">⚙</button>
+
+<div id="op-panel">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+    <div style="font-size:9px;letter-spacing:4px;color:var(--gold)" id="op-title"></div>
+    <button onclick="togglePanel()" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:16px">✕</button>
+  </div>
+  <div style="display:flex;align-items:center;gap:7px;font-size:10px">
+    <div id="conn-dot"></div>
+    <span id="conn-txt" style="color:var(--dim)"></span>
+  </div>
+  <div class="op-sep"></div>
+  <div class="op-label" id="op-api-label"></div>
+  <input class="op-input" id="api-url" type="text" value="http://localhost:8000">
+  <div class="op-label" id="op-key-label"></div>
+  <input class="op-input" id="api-key" type="password" value="casino-admin-key-change-me">
+  <button class="op-btn btn-cyan" id="op-connect-btn" onclick="connect()"></button>
+  <div class="op-sep"></div>
+  <div class="op-label" id="op-test-label"></div>
+  <button class="op-btn btn-gold" id="op-demo-btn" onclick="startDemo()"></button>
+  <button class="op-btn btn-dim" id="op-reset-btn" onclick="resetScreen()"></button>
+</div>
+
+<script>
+// ── ÇEVIRI / TRANSLATIONS ─────────────────────────────────────────────────────
+const T = {
+  tr: {
+    live: 'CANLI', offline: 'ÇEVRİMDIŞI',
+    nextDraw: 'SONRAKI ÇEKİLİŞ', waitingDraw: 'ÇEKİLİŞ BEKLENİYOR',
+    winner: 'KAZANAN', tickets: 'BİLET SIRALAMASI',
+    finalLabel: 'BÜYÜK FİNALE KALAN SÜRE · 13 OCAK',
+    day: 'GÜN', hour: 'SAAT', min: 'DAKİKA', sec: 'SANİYE',
+    tiers: {daily:'GÜNLÜK',weekly:'HAFTALIK',monthly:'AYLIK',quarterly:'3 AYLIK',annual:'BÜYÜK FİNAL'},
+    op: 'OPERATÖR', apiLabel: 'API ADRESİ', keyLabel: 'ADMIN KEY',
+    connect: '⊙ BAĞLAN', demo: '▶ DEMO ÇEKİLİŞ', reset: '↺ SIFIRLA',
+    connOk: 'BAĞLI', connErr: 'BAĞLANTI HATASI',
+    miniBonusLabel: '🎁 AKTİF OYUNCU BONUSU',
+  },
+  en: {
+    live: 'LIVE', offline: 'OFFLINE',
+    nextDraw: 'NEXT DRAW', waitingDraw: 'AWAITING DRAW',
+    winner: 'WINNER', tickets: 'TICKET RANKING',
+    finalLabel: 'COUNTDOWN TO GRAND FINAL · JANUARY 13',
+    day: 'DAY', hour: 'HOUR', min: 'MIN', sec: 'SEC',
+    tiers: {daily:'DAILY',weekly:'WEEKLY',monthly:'MONTHLY',quarterly:'QUARTERLY',annual:'GRAND FINAL'},
+    op: 'OPERATOR', apiLabel: 'API ADDRESS', keyLabel: 'ADMIN KEY',
+    connect: '⊙ CONNECT', demo: '▶ DEMO DRAW', reset: '↺ RESET',
+    connOk: 'CONNECTED', connErr: 'CONNECTION ERROR',
+    miniBonusLabel: '🎁 ACTIVE PLAYER BONUS',
+  },
+  ru: {
+    live: 'В ЭФИРЕ', offline: 'НЕ В СЕТИ',
+    nextDraw: 'СЛЕДУЮЩИЙ РОЗЫГРЫШ', waitingDraw: 'ОЖИДАНИЕ РОЗЫГРЫША',
+    winner: 'ПОБЕДИТЕЛЬ', tickets: 'РЕЙТИНГ БИЛЕТОВ',
+    finalLabel: 'ДО ГРАНД-ФИНАЛА · 13 ЯНВАРЯ',
+    day: 'ДЕНЬ', hour: 'ЧАС', min: 'МИН', sec: 'СЕК',
+    tiers: {daily:'ЕЖЕДНЕВНЫЙ',weekly:'ЕЖЕНЕДЕЛЬНЫЙ',monthly:'ЕЖЕМЕСЯЧНЫЙ',quarterly:'КВАРТАЛЬНЫЙ',annual:'ГРАНД-ФИНАЛ'},
+    op: 'ОПЕРАТОР', apiLabel: 'АДРЕС API', keyLabel: 'ADMIN KEY',
+    connect: '⊙ ПОДКЛЮЧИТЬ', demo: '▶ ДЕМО РОЗЫГРЫШ', reset: '↺ СБРОСИТЬ',
+    connOk: 'ПОДКЛЮЧЕНО', connErr: 'ОШИБКА СОЕДИНЕНИЯ',
+    miniBonusLabel: '🎁 БОНУС АКТИВНОГО ИГРОКА',
+  },
+  ka: {
+    live: 'პირდაპირი', offline: 'ხაზგარეშე',
+    nextDraw: 'შემდეგი გათამაშება', waitingDraw: 'გათამაშება მოლოდინშია',
+    winner: 'გამარჯვებული', tickets: 'ბილეთების რეიტინგი',
+    finalLabel: 'დიდ ფინალამდე · 13 იანვარი',
+    day: 'დღე', hour: 'საათი', min: 'წთ', sec: 'წმ',
+    tiers: {daily:'ყოველდღიური',weekly:'ყოველკვირეული',monthly:'ყოველთვიური',quarterly:'კვარტალური',annual:'დიდი ფინალი'},
+    op: 'ოპერატორი', apiLabel: 'API მისამართი', keyLabel: 'ADMIN KEY',
+    connect: '⊙ დაკავშირება', demo: '▶ დემო გათამაშება', reset: '↺ გადატვირთვა',
+    connOk: 'დაკავშირებულია', connErr: 'კავშირის შეცდომა',
+    miniBonusLabel: '🎁 აქტიური მოთამაშის ბონუსი',
+  },
+};
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let lang    = 'tr';
+let apiBase = 'http://localhost:8000';
+let apiKey  = 'casino-admin-key-change-me';
+let ws      = null;
+let polling = null;
+let spinning = false;
+
+// ── DİL GÜNCELLE ─────────────────────────────────────────────────────────────
+function setLang(l) {
+  lang = l;
+  langIdx = LANG_CYCLE.indexOf(l);
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.textContent === l.toUpperCase()));
+  applyTranslations();
+}
+
+function t(key) { return T[lang][key] || T['tr'][key] || key; }
+
+function applyTranslations() {
+  const L = T[lang];
+  const targets = [
+    'countdown-label','idle-text','winner-label','lb-title',
+    'op-title','op-api-label','op-key-label','op-connect-btn','op-demo-btn','op-reset-btn',
+    'draw-tier','status-txt','cd-g-lbl','cd-s-lbl','cd-d-lbl','cd-sn-lbl',
+  ];
+  targets.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.transition = 'opacity .35s';
+    if (el) el.style.opacity = '0';
+  });
+  setTimeout(() => {
+    document.getElementById('status-txt').textContent   = L.live;
+    document.getElementById('countdown-label').textContent = L.finalLabel;
+    document.getElementById('cd-g-lbl').textContent     = L.day;
+    document.getElementById('cd-s-lbl').textContent     = L.hour;
+    document.getElementById('cd-d-lbl').textContent     = L.min;
+    document.getElementById('cd-sn-lbl').textContent    = L.sec;
+    document.getElementById('idle-text').textContent    = L.waitingDraw;
+    document.getElementById('winner-label').textContent = L.winner;
+    document.getElementById('lb-title').textContent     = L.tickets;
+    document.getElementById('op-title').textContent     = L.op;
+    document.getElementById('op-api-label').textContent = L.apiLabel;
+    document.getElementById('op-key-label').textContent = L.keyLabel;
+    document.getElementById('op-connect-btn').textContent = L.connect;
+    document.getElementById('op-demo-btn').textContent  = L.demo;
+    document.getElementById('op-reset-btn').textContent = L.reset;
+    document.getElementById('draw-tier').textContent    = L.nextDraw;
+    targets.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.opacity = '1';
+    });
+  }, 350);
+}
+
+// ── COUNTDOWN ─────────────────────────────────────────────────────────────────
+function updateCountdown() {
+  const now = new Date();
+  const target = new Date(now.getFullYear() + (now.getMonth() >= 1 ? 1 : 0), 0, 13, 20, 0, 0);
+  const diff = Math.max(0, target - now);
+  const pad = n => String(Math.floor(n)).padStart(2, '0');
+  document.getElementById('cd-g').textContent  = pad(diff / 864e5);
+  document.getElementById('cd-s').textContent  = pad((diff % 864e5) / 36e5);
+  document.getElementById('cd-d').textContent  = pad((diff % 36e5) / 6e4);
+  document.getElementById('cd-sn').textContent = pad((diff % 6e4) / 1e3);
+}
+setInterval(updateCountdown, 1000);
+
+// ── API ───────────────────────────────────────────────────────────────────────
+async function apiFetch(path) {
+  const r = await fetch(apiBase + path, { headers: { 'X-Admin-Key': apiKey } });
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+
+// ── CONNECT ───────────────────────────────────────────────────────────────────
+async function connect() {
+  apiBase = document.getElementById('api-url').value.trim().replace(/\/$/, '');
+  apiKey  = document.getElementById('api-key').value.trim();
+  try {
+    await apiFetch('/health');
+    setConnStatus('ok');
+    loadLeaderboard();
+    loadNextDraw();
+    startPolling();
+    connectWS();
+    initMiniBonusBaseline();  // Eski kazananları göstermemek için başlangıç noktasını kaydet
+  } catch(e) {
+    setConnStatus('err');
+  }
+}
+
+// İlk bağlantıda, o ana kadar olan mini bonus kazananını SESSİZCE hatırla.
+// Böylece ekran açılır açılmaz saatler önceki bir kazananı göstermez —
+// sadece bundan SONRA olacak yeni kazananları gösterir.
+async function initMiniBonusBaseline() {
+  try {
+    const data = await apiFetch('/api/v1/display/last-mini-bonus');
+    if (data.found) lastShownMiniBonusId = data.result_id;
+  } catch (e) {}
+}
+
+function setConnStatus(state) {
+  const dot = document.getElementById('conn-dot');
+  const txt = document.getElementById('conn-txt');
+  const stxt = document.getElementById('status-txt');
+  dot.className = state;
+  txt.textContent = T[lang][state === 'ok' ? 'connOk' : 'connErr'];
+  if (state === 'ok') { stxt.textContent = T[lang].live; stxt.style.color = 'rgba(34,197,94,.7)'; }
+  else { stxt.textContent = T[lang].offline; stxt.style.color = 'rgba(82,74,64,.6)'; }
+}
+
+// ── WEBSOCKET ─────────────────────────────────────────────────────────────────
+function connectWS() {
+  if (ws) ws.close();
+  const wsUrl = apiBase.replace('http', 'ws') + '/api/v1/draws/ws';
+  ws = new WebSocket(wsUrl);
+  ws.onmessage = e => {
+    const data = JSON.parse(e.data);
+    if (data.event === 'draw_completed') {
+      showWinner({ name: data.winner_card_id, card: data.winner_card_id, prize: data.prize });
+    }
+  };
+  ws.onclose = () => setTimeout(connectWS, 5000);
+}
+
+function startPolling() {
+  if (polling) clearInterval(polling);
+  // Her 15 saniyede: leaderboard, sıradaki çekiliş, ve mini bonus kontrolü
+  polling = setInterval(() => { loadLeaderboard(); loadNextDraw(); checkMiniBonus(); }, 15000);
+}
+
+// ── MİNİ BONUS BİLDİRİMİ ─────────────────────────────────────────────────────
+// Şimdiye kadar gösterdiğimiz mini bonus kazananının ID'sini burada saklıyoruz.
+// Aynı kazananı iki kere göstermemek için.
+let lastShownMiniBonusId = null;
+
+async function checkMiniBonus() {
+  try {
+    const data = await apiFetch('/api/v1/display/last-mini-bonus');
+    if (!data.found) return;               // hiç mini bonus verilmemiş
+    if (data.result_id === lastShownMiniBonusId) return;  // bunu zaten gösterdik
+
+    lastShownMiniBonusId = data.result_id;
+    showMiniBonusPopup(data);
+  } catch (e) {
+    // Sessizce geç — bu küçük bir ek özellik, ana ekranı bozmasın
+  }
+}
+
+function showMiniBonusPopup(data) {
+  document.getElementById('mb-popup-label').textContent = T[lang].miniBonusLabel;
+  document.getElementById('mb-popup-name').textContent  = data.winner_name;
+  document.getElementById('mb-popup-prize').textContent = `${data.prize_amount} ${data.prize_currency}`;
+
+  const popup = document.getElementById('mini-bonus-popup');
+  popup.classList.add('show');
+
+  // 6 saniye sonra otomatik kaybol
+  setTimeout(() => popup.classList.remove('show'), 6000);
+}
+
+// ── DATA LOAD ─────────────────────────────────────────────────────────────────
+async function loadNextDraw() {
+  try {
+    const d = await apiFetch('/api/v1/display/next-draw');
+    const nd = d.next_draw;
+    if (!nd) { document.getElementById('draw-tier').textContent = T[lang].waitingDraw; document.getElementById('draw-prize').textContent = '—'; return; }
+    document.getElementById('draw-tier').textContent  = T[lang].tiers[nd.tier] || nd.tier.toUpperCase();
+    document.getElementById('draw-prize').textContent = fmtPrize(nd.prize_amount, nd.prize_currency);
+  } catch(e) {}
+}
+
+// name/card_id casino'nun CRM'inden geliyor — innerHTML'e basmadan önce kaçışlanmalı (stored XSS koruması).
+function escapeHtml(v){
+  return String(v ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  }[c]));
+}
+
+async function loadLeaderboard() {
+  try {
+    const list = await apiFetch('/api/v1/display/leaderboard?limit=10');
+    const el = document.getElementById('lb-list');
+    if (!list.length) { el.innerHTML = '<span style="color:var(--dim);font-size:11px">—</span>'; return; }
+    el.innerHTML = list.map(p => `
+      <div class="lb-item">
+        <span class="lb-rank">${p.rank}</span>
+        <span class="lb-name">${escapeHtml(p.name || p.card_id)}</span>
+        <span class="lb-tickets">${p.total_tickets}</span>
+      </div>`).join('');
+    updateTicker(list);
+  } catch(e) {}
+}
+
+function updateTicker(list) {
+  const msg = list.map(p => `${escapeHtml(p.name || p.card_id)}  ${p.total_tickets} ${T[lang].tickets.split(' ')[0].toLowerCase()}`).join('  ·  ');
+  document.getElementById('ticker-inner').innerHTML = `◈ &nbsp; ${msg} &nbsp; ◈`;
+}
+
+// ── ANIMATIONS ────────────────────────────────────────────────────────────────
+function showWinner(w) {
+  document.getElementById('idle-box').style.display   = 'none';
+  document.getElementById('drum-box').style.display   = 'none';
+  const wb = document.getElementById('winner-box');
+  wb.style.display = 'block';
+  wb.style.animation = 'none';
+  void wb.offsetWidth;
+  wb.style.animation = '';
+  document.getElementById('winner-label').textContent = T[lang].winner;
+  document.getElementById('winner-name').textContent  = w.name;
+  document.getElementById('winner-card').textContent  = w.card !== w.name ? w.card : '';
+  document.getElementById('winner-prize').textContent = w.prize || '';
+  setTimeout(confetti, 300);
+  // Kazanan sahnesi 12 saniye aynı dilde kalsın, sonra döngü devam etsin
+  if (autoTimer) clearInterval(autoTimer);
+  setTimeout(() => { if (autoRotate) startAutoRotate(5000); }, 12000);
+}
+
+function resetScreen() {
+  spinning = false;
+  document.getElementById('winner-box').style.display = 'none';
+  document.getElementById('drum-box').style.display   = 'none';
+  document.getElementById('idle-box').style.display   = 'block';
+}
+
+// ── DEMO ──────────────────────────────────────────────────────────────────────
+const DEMO = [
+  {n:'Hasan Koç',id:'KRT-007'},{n:'Ahmet Yılmaz',id:'KRT-001'},
+  {n:'Зейнеп Арслан',id:'KRT-006'},{n:'გიორგი ბერიძე',id:'KRT-008'},
+  {n:'Elena Popescu',id:'KRT-003'},
+];
+
+function startDemo() {
+  if (spinning) return;
+  spinning = true;
+  document.getElementById('idle-box').style.display   = 'none';
+  document.getElementById('winner-box').style.display = 'none';
+  document.getElementById('drum-box').style.display   = 'block';
+  let c = 0;
+  const iv = setInterval(() => {
+    const p = DEMO[Math.floor(Math.random() * DEMO.length)];
+    document.getElementById('drum-card').textContent = p.id;
+    document.getElementById('drum-name').textContent = p.n;
+    c++;
+    if (c > 25) {
+      clearInterval(iv);
+      const w = DEMO[Math.floor(Math.random() * DEMO.length)];
+      setTimeout(() => {
+        showWinner({ name: w.n, card: w.id, prize: '4,900 ₾' });
+        spinning = false;
+      }, 400);
+    }
+  }, 100);
+}
+
+// ── CONFETTI ──────────────────────────────────────────────────────────────────
+function confetti() {
+  const cols = ['#d4af37','#f0d060','#c41e3a','#fff','#00c8ff'];
+  for (let i = 0; i < 90; i++) {
+    const el = document.createElement('div');
+    const col = cols[Math.floor(Math.random() * cols.length)];
+    el.style.cssText = `position:fixed;left:${Math.random()*100}%;top:-10px;width:${5+Math.random()*8}px;height:${8+Math.random()*12}px;background:${col};border-radius:${Math.random()>.5?'50%':'2px'};z-index:200;pointer-events:none;animation:cffall ${2+Math.random()*2}s ${Math.random()*1.5}s linear forwards`;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 4500);
+  }
+}
+const cs = document.createElement('style');
+cs.textContent = `@keyframes cffall{from{transform:translateY(0) rotate(0deg);opacity:1}to{transform:translateY(110vh) rotate(720deg);opacity:0}}`;
+document.head.appendChild(cs);
+
+// ── OTOMATİK DİL DÖNGÜSÜ ─────────────────────────────────────────────────────
+// TR → EN → KA → RU → TR → ...  her 4 saniyede bir
+const LANG_CYCLE = ['tr', 'en', 'ka', 'ru'];
+let   langIdx    = 0;
+let   autoRotate = true;   // Operatör manuel seçerse durur, 30sn sonra tekrar başlar
+let   autoTimer  = null;
+
+function nextLang() {
+  if (!autoRotate) return;
+  langIdx = (langIdx + 1) % LANG_CYCLE.length;
+  setLang(LANG_CYCLE[langIdx]);
+}
+
+// Kazanan gösterilirken döngüyü yavaşlat — her dil 6 saniye kalsın
+function startAutoRotate(interval = 4000) {
+  if (autoTimer) clearInterval(autoTimer);
+  autoTimer = setInterval(nextLang, interval);
+}
+
+// Manuel dil seçimi → otomatik duraklat → 30 saniye sonra devam et
+document.querySelectorAll('.lang-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    autoRotate = false;
+    if (autoTimer) clearInterval(autoTimer);
+    // 30 saniye sonra otomatik dönüşü yeniden başlat
+    setTimeout(() => {
+      autoRotate = true;
+      startAutoRotate();
+    }, 30000);
+  });
+});
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+function fmtPrize(amt, cur) {
+  const s = {TRY:'₺',EUR:'€',USD:'$',GEL:'₾',GBP:'£'};
+  return `${Number(amt).toLocaleString()} ${s[cur]||cur}`;
+}
+function togglePanel() { document.getElementById('op-panel').classList.toggle('open'); }
+
+// Klavye
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.getElementById('op-panel').classList.remove('open');
+  if (e.key === 'F2') togglePanel();
+  if (e.key === ' ') startDemo();
+});
+
+// ── BRANDING YÜKLE ───────────────────────────────────────────────────────────
+// branding.json ve themes.json aynı klasördeyse otomatik okur.
+// API'den de alınabilir: /api/v1/display/branding
+
+const THEMES = {
+  dark_gold:   {primary:"#d4af37",secondary:"#00c8ff",accent:"#c41e3a",background:"#05050a",bg2:"#0c0c16",text:"#ede5d0",dim:"#524a40"},
+  dark_red:    {primary:"#e8334a",secondary:"#ff9f43",accent:"#d4af37",background:"#0a0508",bg2:"#140a0c",text:"#f0ddd0",dim:"#5a4040"},
+  dark_blue:   {primary:"#4fc3f7",secondary:"#d4af37",accent:"#e8334a",background:"#040810",bg2:"#080f18",text:"#d0e8f0",dim:"#405060"},
+  dark_purple: {primary:"#c084fc",secondary:"#d4af37",accent:"#e8334a",background:"#060408",bg2:"#0e080f",text:"#ead0f0",dim:"#504050"},
+};
+
+async function loadBranding() {
+  let cfg = null;
+  try {
+    // Önce API'den dene (backend ayaktaysa)
+    if (apiBase && apiBase !== 'http://localhost:8000') {
+      const r = await fetch(`${apiBase}/api/v1/display/branding`);
+      if (r.ok) cfg = await r.json();
+    }
+  } catch(e) {}
+
+  try {
+    // Fallback: aynı klasördeki branding.json
+    if (!cfg) {
+      const r = await fetch('./branding.json');
+      if (r.ok) cfg = await r.json();
+    }
+  } catch(e) {}
+
+  if (!cfg) return;
+
+  // Casino adı ve logo
+  const cname = document.getElementById('casino-name');
+  const ctag  = document.getElementById('casino-tagline');
+  const clogo = document.getElementById('casino-logo');
+
+  if (cfg.casino?.name)    cname.textContent = cfg.casino.name;
+  if (cfg.casino?.tagline) ctag.textContent  = cfg.casino.tagline;
+  if (cfg.casino?.logo_url) {
+    clogo.src = cfg.casino.logo_url;
+    clogo.style.display = 'block';
+  } else if (cfg.casino?.logo_base64) {
+    clogo.src = `data:image/png;base64,${cfg.casino.logo_base64}`;
+    clogo.style.display = 'block';
+  }
+
+  // Kampanya ayarları
+  if (cfg.campaign?.final_date) {
+    window._finalDate  = cfg.campaign.final_date;
+    window._finalLabel = cfg.campaign.final_label || '';
+  }
+
+  // Tema uygula
+  const preset = cfg.theme?.preset || 'dark_gold';
+  const colors = preset === 'custom'
+    ? cfg.theme.custom_colors
+    : THEMES[preset] || THEMES.dark_gold;
+
+  const root = document.documentElement;
+  root.style.setProperty('--gold',   colors.primary);
+  root.style.setProperty('--cyan',   colors.secondary);
+  root.style.setProperty('--red-l',  colors.accent);
+  root.style.setProperty('--bg',     colors.background);
+  root.style.setProperty('--bg2',    colors.bg2 || colors.background);
+  root.style.setProperty('--text',   colors.text);
+  root.style.setProperty('--dim',    colors.dim);
+
+  // Dil ayarları
+  if (cfg.display?.languages) {
+    window._langCycle = cfg.display.languages;
+    LANG_CYCLE.length = 0;
+    cfg.display.languages.forEach(l => LANG_CYCLE.push(l));
+  }
+  if (cfg.display?.lang_rotate_interval_sec) {
+    window._rotateInterval = cfg.display.lang_rotate_interval_sec * 1000;
+  }
+  if (cfg.display?.lang_auto_rotate === false) {
+    autoRotate = false;
+  }
+  if (cfg.display?.show_leaderboard === false) {
+    const lb = document.getElementById('leaderboard');
+    if (lb) lb.style.display = 'none';
+  }
+  if (cfg.display?.show_countdown === false) {
+    const cd = document.getElementById('countdown');
+    if (cd) cd.style.display = 'none';
+  }
+}
+
+// İlk yükleme
+applyTranslations();
+updateCountdown();
+loadBranding().then(() => {
+  startAutoRotate(window._rotateInterval || 4000);
+});
+</script>
+</body>
+</html>
