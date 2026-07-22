@@ -5,8 +5,13 @@ Minor Bulgular — Regresyon Testleri
      çıktısı karar motoru tarafından "AI kararı" olarak sunulmuyor.
   8. CORS origin listesi artık NANS_CORS_ORIGINS ile yapılandırılabiliyor.
   9. Aynı lisansa eşzamanlı istekler artık bir kilit altında sıralanıyor.
+  10. check_in()'in KRİTİK dalı artık suspend()'i (kendi webhook'unu kendi
+      içinde gönderen) çağırmıyor — bu, RLock reentrant olduğu için check_in'in
+      DIŞ kilidi tutuluyorken bir ağ çağrısı yapılmasına (ve dolayısıyla aynı
+      ürünün TÜM DİĞER lisanslarının bloklanmasına) yol açıyordu.
 """
 import threading
+import time
 
 import pytest
 
@@ -132,3 +137,59 @@ def test_concurrent_create_license_only_one_wins():
 
     assert results.count("ok") == 1, "Sadece bir oluşturma başarılı olmalı, geri kalanı reddedilmeli"
     assert results.count("rejected") == 19
+
+
+# ── 10. KRİTİK askıya alma, ürünün diğer lisanslarını bloklamamalı ────────────
+
+def test_critical_suspend_does_not_hold_lock_during_webhook(monkeypatch):
+    """
+    check_in() KRİTİK risk tespit ettiğinde eskiden self.suspend()'i çağırıyordu;
+    suspend() webhook'unu kendi gövdesinde gönderir, ve RLock reentrant olduğu
+    için bu ağ çağrısı check_in'in DIŞ kilidi (ürün başına, lisans başına değil)
+    HÂLÂ tutuluyorken gerçekleşiyordu. Yavaş/erişilemeyen bir webhook, o zaman
+    aynı ürünün TÜM DİĞER lisanslarını (check-in/renew/suspend) HTTP timeout'u
+    kadar bloklardı. Bu test, KRİTİK yoldaki webhook çağrısı devam ederken
+    BAŞKA bir lisansa yapılan check-in'in hemen dönmesi gerektiğini doğrular.
+    """
+    import main as main_module
+
+    call_started = threading.Event()
+    release_call = threading.Event()
+
+    def slow_webhook(url, payload):
+        call_started.set()
+        release_call.wait(timeout=2)
+        return {"status": 200}
+
+    monkeypatch.setattr(main_module, "_send_webhook", slow_webhook)
+
+    lm = LicenseManager(LimbicSystem(), alert_webhook_url="http://example.test/hook")
+
+    # KRİTİK risk tetikleyecek kadar cihaz VE kullanım aşımı (bkz. LimbicSystem
+    # ağırlıkları: financial 0.4 + operational 0.3 >= 0.7 eşiği).
+    lm.create_license("CRITICAL", "Kritik Musteri", "basic", max_devices=1, expires_at=None)
+    lic = lm.licenses["CRITICAL"]
+    now_iso = time.strftime("%Y-%m-%dT%H:%M:%S")
+    lic.known_devices = {f"dev-{i}": now_iso for i in range(5)}
+    lic.usage_log = [{"device_id": "x", "ip": None, "timestamp": now_iso} for _ in range(200)]
+
+    lm.create_license("OTHER", "Diger Musteri", "basic", max_devices=5, expires_at=None)
+
+    def trigger_critical():
+        lm.check_in("CRITICAL", device_id="dev-new")
+
+    t = threading.Thread(target=trigger_critical)
+    t.start()
+    assert call_started.wait(timeout=1), "Webhook hiç başlamadı — test kurulumunu kontrol edin"
+
+    started = time.monotonic()
+    lm.check_in("OTHER", device_id="other-dev")
+    elapsed = time.monotonic() - started
+
+    release_call.set()
+    t.join(timeout=2)
+
+    assert elapsed < 0.3, (
+        f"OTHER lisansına check-in {elapsed:.2f}s sürdü — KRİTİK yoldaki webhook "
+        "hâlâ paylaşılan LicenseManager kilidini tutuyor olmalı."
+    )

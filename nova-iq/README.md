@@ -59,3 +59,13 @@ pytest tests/ -v
   cihaz kaldırma/lisans oluşturma artık aynı lisans üzerinde birbirini
   ezmiyor. Webhook gönderimi gibi ağ I/O'su kilit DIŞINDA yapılır, yavaş
   bir webhook diğer isteklerin beklemesine yol açmaz.
+- **KRİTİK risk askıya alması artık ürünün diğer lisanslarını bloklamıyor** —
+  `check_in()`'in KRİTİK dalı eskiden `suspend()`'i çağırıyordu; `suspend()`
+  webhook'unu kendi gövdesinde gönderdiği için, `RLock` reentrant olduğundan
+  bu ağ çağrısı `check_in`'in DIŞ kilidi (ürün başına, lisans başına değil)
+  hâlâ tutuluyorken gerçekleşiyordu. Yavaş/erişilemeyen bir webhook bu yüzden
+  aynı ürünün TÜM DİĞER lisanslarını (check-in/renew/suspend) HTTP timeout'u
+  (10sn) kadar bloklardı — tam olarak önceki maddedeki kilidin önlemeye
+  çalıştığı şey. Durum değişikliği artık `_suspend_locked()` ile kilit
+  altında I/O'suz yapılıyor, webhook ise kilit serbest bırakıldıktan sonra
+  gönderiliyor (diğer eşzamanlı yollarla aynı deferred-webhook deseni).

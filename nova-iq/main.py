@@ -487,10 +487,11 @@ class LicenseManager:
         # Aynı lisansa eşzamanlı check-in/renew/suspend istekleri gelirse (birden
         # fazla thread'de işlenen istekler) durum güncellemeleri birbirini
         # ezmesin diye tüm mutasyonlar bu kilit altında yapılır. RLock: check_in
-        # kritik risk durumunda kendi içinde suspend()'i çağırıyor — aynı thread'in
-        # kilidi yeniden alabilmesi (deadlock olmadan) gerekiyor. Webhook gönderimi
-        # gibi ağ I/O'su KİLİT DIŞINDA yapılır — aksi halde yavaş/erişilemeyen bir
-        # webhook, o lisansa gelen diğer tüm istekleri bloklardı.
+        # kritik risk durumunda kendi içinde _suspend_locked()'i çağırıyor — aynı
+        # thread'in kilidi yeniden alabilmesi (deadlock olmadan) gerekiyor. Webhook
+        # gönderimi gibi ağ I/O'su KİLİT DIŞINDA yapılır — aksi halde yavaş/
+        # erişilemeyen bir webhook, bu ürünün TÜM lisanslarına gelen diğer
+        # istekleri bloklardı (bkz. suspend/_suspend_locked ve check_in).
         self._lock = RLock()
 
     def create_license(self, license_key: str, customer_name: str, plan: str,
@@ -502,12 +503,19 @@ class LicenseManager:
             self.licenses[license_key] = lic
             return lic
 
+    def _suspend_locked(self, lic: "License") -> None:
+        """suspend()'in durum-değişikliği kısmı — çağıran zaten self._lock'u
+        tutuyorken kullanılır (I/O yapmaz). suspend() ve check_in()'in KRİTİK
+        dalı bunu paylaşır; her ikisi de webhook'u kendi kilit kapsamları
+        DIŞINDA gönderir (bkz. suspend() ve check_in())."""
+        lic.status = LicenseStatus.SUSPENDED
+
     def suspend(self, license_key: str, reason: str) -> Dict:
         with self._lock:
             lic = self.licenses.get(license_key)
             if not lic:
                 return {"error": "Lisans bulunamadı"}
-            lic.status = LicenseStatus.SUSPENDED
+            self._suspend_locked(lic)
             customer_name = lic.customer_name
         if self.alert_webhook_url:
             _send_webhook(self.alert_webhook_url, {
@@ -645,11 +653,24 @@ class LicenseManager:
 
             action_taken = None
             if risk["risk_level"] == "KRİTİK":
-                # suspend() kendi kilidini alır — RLock olduğu için aynı thread'den
-                # yeniden kilitleme sorun değil.
-                self.suspend(license_key, reason=f"Kritik anomali (risk skoru: {risk['risk_score']})")
+                # DİKKAT: self.suspend() ÇAĞRILMAZ — suspend() webhook'unu kendi
+                # gövdesinde gönderir, ve RLock reentrant olduğu için bu, check_in'in
+                # DIŞ kilidi hâlâ tutuluyorken gerçekleşirdi. self._lock ürün
+                # başınadır (lisans başına değil); yavaş/erişilemeyen bir webhook
+                # o zaman aynı ürünün TÜM DİĞER lisanslarını (check-in/renew/
+                # suspend) HTTP timeout'u kadar (10sn) bloklardı — tam olarak bu
+                # kilidin "ağ I/O'su kilit dışında" tasarımının önlemeye çalıştığı
+                # şey. Durum değişikliğini burada (kilit altında, I/O'suz) yapıp
+                # webhook'u aşağıdaki ortak deferred mekanizmaya bırakıyoruz.
+                reason = f"Kritik anomali (risk skoru: {risk['risk_score']})"
+                self._suspend_locked(lic)
                 action_taken = "otomatik_askiya_alindi"
                 warnings.append("Cihaz/kullanım anomalisi kritik seviyede — lisans otomatik askıya alındı.")
+                if self.alert_webhook_url:
+                    webhook_payload = {
+                        "event": "license_suspended", "license_key": license_key,
+                        "customer": lic.customer_name, "reason": reason,
+                    }
             elif risk["risk_level"] in ("YÜKSEK", "ORTA"):
                 warnings.append(f"Şüpheli kullanım paterni tespit edildi (risk: {risk['risk_level']}).")
                 if self.alert_webhook_url:
